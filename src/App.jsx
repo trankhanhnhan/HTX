@@ -870,7 +870,7 @@ onClick={async () => {
       setShowEditTypeForm(false);
       alert('Cập nhật thành công!');
     } else {
-      throw new Error(data.message || 'Cập nhật thất bại');
+      throw new Error(data.message || 'Cập nhật thất bạii');
     }
   } catch (error) {
     console.error('Error:', error);
