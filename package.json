@@ -1,11 +1,14 @@
 {
   "name": "demohtx-tailwind",
+  "homepage": "https://trankhanhnhan.github.io/demoHTX-tailwind/",
   "version": "0.0.1",
   "private": true,
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
@@ -35,6 +38,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
     "autoprefixer": "^10.4.0",
+    "gh-pages": "^6.3.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
     "vite": "^5.0.0"
