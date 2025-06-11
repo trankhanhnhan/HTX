@@ -1,0 +1,4 @@
+username,password,role,created_at
+user1,$2b$08$Sxr.lK26JXYu3FxiNnHSv.P3Otoo3/DO6UPHkNPzVxUUKQOfzwsxy,user,2025-06-11T02:56:27.518Z
+manager1,$2b$08$UtHlsp5dSYluGtSljOMEbu/HgO0wIzWCbXp3WzE1r48Jpp/nOgCfW,manager,2025-06-11T04:08:01.392Z
+user2,$2b$08$c.Lbt43g.SRhPt98CeTnR.9W92GFT79yJbIbLNJVpAeido3RV09fe,user,2025-06-11T04:10:10.393Z

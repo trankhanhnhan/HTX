@@ -6,7 +6,7 @@ const cors = require('cors');
 const multer = require('multer');
 const upload = multer({ dest: path.join(__dirname, 'public', 'uploads') });
 const QRCode = require('qrcode');
-
+const bcrypt = require('bcryptjs');
 
 const app = express();
 app.use(cors());
@@ -18,6 +18,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 // Constants 
 const PORT = 3001;
 const PRODUCT_TYPE_CSV = path.join(__dirname, 'csv', 'productTypes.csv');
+const USERS_CSV = path.join(__dirname, 'csv', 'users.csv');
 
 app.listen(3001, '0.0.0.0', () => {
   console.log(`Server is running on http://localhost:${PORT}`);
@@ -1341,3 +1342,98 @@ app.get('/api/prod-process', (req, res) => {
     .on('data', row => results.push(row))
     .on('end', () => res.json(results));
 });
+
+// Đăng nhập: kiểm tra users.csv trước, nếu không có thì check admin mặc định
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  // 1. Kiểm tra trong users.csv
+  if (fs.existsSync(USERS_CSV)) {
+    const lines = fs.readFileSync(USERS_CSV, 'utf8').split('\n').filter(Boolean);
+    const header = lines[0].split(',');
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',');
+      if (cols[0] === username) {
+        const hash = cols[1];
+        const role = cols[2];
+        // So sánh password
+        const ok = await require('bcryptjs').compare(password, hash);
+        if (ok) {
+          return res.json({
+            success: true,
+            user: {
+              username,
+              role,
+              token: 'dummy-token'
+            }
+          });
+        } else {
+          return res.json({ success: false, message: 'Sai tài khoản hoặc mật khẩu' });
+        }
+      }
+    }
+  }
+  // 2. Nếu không có user, check admin mặc định
+  if (username === 'admin' && password === 'admin123') {
+    return res.json({
+      success: true,
+      user: {
+        username: 'admin',
+        role: 'admin',
+        token: 'dummy-token'
+      }
+    });
+  }
+  res.json({ success: false, message: 'Sai tài khoản hoặc mật khẩu' });
+});
+
+// Lấy danh sách user (chỉ cho admin)
+app.get('/api/users', (req, res) => {
+  // Đơn giản: không xác thực token, chỉ demo
+  if (!fs.existsSync(USERS_CSV)) return res.json({ success: true, users: [] });
+  const results = [];
+  fs.createReadStream(USERS_CSV)
+    .pipe(csv.parse({ headers: true }))
+    .on('data', row => results.push(row))
+    .on('end', () => res.json({ success: true, users: results }))
+    .on('error', () => res.json({ success: true, users: [] }));
+});
+
+// Thêm user mới (chỉ cho admin và manager)
+app.post('/api/users', checkWritePermission, async (req, res) => {
+  const { username, password, role } = req.body;
+  if (!username || !password || !role) {
+    return res.json({ success: false, message: 'Thiếu thông tin' });
+  }
+  if (!['admin', 'manager', 'user'].includes(role)) {
+    return res.json({ success: false, message: 'Quyền không hợp lệ' });
+  }
+  // Kiểm tra trùng username
+  let users = [];
+  if (fs.existsSync(USERS_CSV)) {
+    users = fs.readFileSync(USERS_CSV, 'utf8').split('\n').filter(Boolean);
+    // Bỏ header
+    users = users.slice(1).map(line => line.split(',')[0]);
+    if (users.includes(username)) {
+      return res.json({ success: false, message: 'Tên đăng nhập đã tồn tại' });
+    }
+  }
+  // Hash password
+  const hash = await bcrypt.hash(password, 8);
+  const needHeader = !fs.existsSync(USERS_CSV) || fs.readFileSync(USERS_CSV, 'utf8').trim() === '';
+  const row = `${username},${hash},${role},${new Date().toISOString()}\n`;
+  if (needHeader) {
+    fs.writeFileSync(USERS_CSV, 'username,password,role,created_at\n' + row, 'utf8');
+  } else {
+    fs.appendFileSync(USERS_CSV, row, 'utf8');
+  }
+  res.json({ success: true, user: { username, role } });
+});
+
+// Middleware kiểm tra quyền ghi (admin hoặc manager hoặc user)
+function checkWritePermission(req, res, next) {
+  const role = req.headers['x-role'] || req.body.role || req.query.role || 'user';
+  if (role !== 'admin' && role !== 'manager' && role !== 'user') {
+    return res.status(403).json({ success: false, message: 'Bạn không có quyền thực hiện thao tác này' });
+  }
+  next();
+}

@@ -51,39 +51,39 @@ function ProductDetail({ products }) {
           <div className="mt-8 pl-6 pr-4 md:mt-10">
             <h3 className="text-lg md:text-xl font-bold text-green-700 mb-4">Quá trình sản xuất</h3>
             <div className="relative pl-8 md:pl-16">
-            <div className="absolute -left-1 top-0 bottom-0 w-1 bg-green-400 rounded-full z-0"></div>
-            <div className="space-y-7 -ml-2 md:-ml-8">
-              {processStages
-              .filter(step => step.index === product.index)
-              .map((step, idx) => (
-                <div key={idx} className="">
-                  <div className="absolute -left-2.5  w-4 h-4 bg-white border-2 border-green-400 rounded-full"></div>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="font-semibold pb-9">Công việc {idx + 1}: {step.stage}</span>
+              <div className="absolute -left-1 top-0 bottom-0 w-1 bg-green-400 rounded-full z-0"></div>
+              <div className="space-y-7 -ml-2 md:-ml-8">
+                {processStages
+                  .filter(step => step.index === product.index)
+                  .map((step, idx) => (
+                    <div key={idx} className="">
+                      <div className="absolute -left-2.5  w-4 h-4 bg-white border-2 border-green-400 rounded-full"></div>
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="font-semibold pb-9">Công việc {idx + 1}: {step.stage}</span>
+                        </div>
+                        <div className="text-blue-600 text-sm font-medium">{step.date && new Date(step.date).toLocaleDateString('vi-VN')}</div>
+                      </div>
+                      <div className="mt-1 text-gray-700">- {step.content}</div>
+                      {step.imageProd && step.imageProd !== '""' && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {(Array.isArray(step.imageProd) ? step.imageProd : step.imageProd.split(','))
+                            .map((img, i) => (
+                              img.trim() && (
+                                <img
+                                  key={i}
+                                  src={img.replace(/^"|"$/g, '').trim()}
+                                  alt="Ảnh công việc"
+                                  className="w-40 h-28 object-cover rounded shadow border"
+                                />
+                              )
+                            ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-blue-600 text-sm font-medium">{step.date && new Date(step.date).toLocaleDateString('vi-VN')}</div>
-                  </div>
-                  <div className="mt-1 text-gray-700">- {step.content}</div>
-                  {step.imageProd && step.imageProd !== '""' && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {(Array.isArray(step.imageProd) ? step.imageProd : step.imageProd.split(','))
-                        .map((img, i) => (
-                          img.trim() && (
-                            <img
-                              key={i}
-                              src={img.replace(/^"|"$/g, '').trim()}
-                              alt="Ảnh công việc"
-                              className="w-40 h-28 object-cover rounded shadow border"
-                            />
-                          )
-                        ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                  ))}
+              </div>
             </div>
-          </div>
           </div>
         )}
       </div>

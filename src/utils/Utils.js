@@ -131,6 +131,12 @@ export async function downloadQRAsWord(qr) {
 
 // Xuất QR ra ảnh và ghi log
 export async function handleExportQR(product, setExportQRProduct, setExportedQRs) {
+  const userRole = JSON.parse(localStorage.getItem('user'))?.role;
+  if (userRole !== 'admin' && userRole !== 'manager') {
+    alert('Bạn không có quyền xuất mã QR');
+    return;
+  }
+
   setExportQRProduct(product);
   setTimeout(async () => {
     const node = document.getElementById('qr-export-area');

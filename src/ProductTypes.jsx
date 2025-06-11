@@ -78,7 +78,7 @@ function ProductTypes({
                           setEditTypeForm({
                             ...product,
                             oldProductId: product.productId, // Lưu mã sản phẩm cũ
-                            productId: product.productId 
+                            productId: product.productId
                           });
                           setShowEditTypeForm(true);
                         } catch (error) {
@@ -94,15 +94,17 @@ function ProductTypes({
                       onClick={async () => {
                         try {
                           if (!window.confirm('Bạn có chắc muốn xóa sản phẩm này?')) return;
-                          const res = await fetch(`http://192.168.5.119:3001/api/products/batch/${product.productId}`, {
+                          // Thay đổi endpoint API từ products sang product-types
+                          const res = await fetch(`http://192.168.5.119:3001/api/product-types/${product.productId}`, {
                             method: 'DELETE'
                           });
                           const data = await res.json();
                           if (data.success) {
-                            const productsRes = await fetch('http://192.168.5.119:3001/api/products');
-                            const newProducts = await productsRes.json();
-                            setProducts(newProducts);
-                            alert('Xóa sản phẩm thành công!');
+                            // Fetch lại danh sách loại sản phẩm thay vì sản phẩm
+                            const typesRes = await fetch('http://192.168.5.119:3001/api/product-types');
+                            const newTypes = await typesRes.json();
+                            setProducts(newTypes);
+                            alert('Xóa loại sản phẩm thành công!');
                           } else {
                             throw new Error(data.message || 'Xóa thất bại');
                           }
