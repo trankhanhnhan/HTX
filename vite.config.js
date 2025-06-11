@@ -4,5 +4,5 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/demoHTX-tailwind/', // 👈 tên repo trên GitHub
+  base: 'https://github.com/trankhanhnhan/demoHTX-tailwind', // 👈 tên repo trên GitHub
 })
