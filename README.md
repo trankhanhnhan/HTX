@@ -1,4 +1,4 @@
-## Các chức năng chính
+
 
 ### 1. Quản lý loại sản phẩm
 - Thêm mới, chỉnh sửa, xóa loại sản phẩm nông nghiệp.
