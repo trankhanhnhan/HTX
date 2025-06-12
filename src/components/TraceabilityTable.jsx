@@ -9,6 +9,42 @@ function TraceabilityTable({
   // Phân trang
   const paginatedProducts = filteredProductList.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
+  const handleDelete = async (product) => {
+    if (window.confirm('Bạn có chắc muốn xóa sản phẩm này?')) {
+      try {
+        // 1. Update diary status first
+        const diaryRes = await fetch(`http://192.168.5.119:3001/api/complete-diaries/${product.index}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            tracingStatus: '(Đã xóa khỏi truy xuất nguồn gốc)'
+          })
+        });
+
+        if (!diaryRes.ok) throw new Error('Lỗi khi cập nhật trạng thái nhật ký');
+
+        // 2. Delete from products
+        const deleteRes = await fetch(`http://192.168.5.119:3001/api/products/batch/${product.index}`, {
+          method: 'DELETE'
+        });
+
+        if (!deleteRes.ok) throw new Error('Lỗi khi xóa sản phẩm');
+
+        // 3. Refresh products list
+        const refreshRes = await fetch('http://192.168.5.119:3001/api/products');
+        const newProducts = await refreshRes.json();
+        setProducts(newProducts);
+
+        alert('Đã xóa sản phẩm thành công');
+
+      } catch (err) {
+        alert('Lỗi khi xóa: ' + err.message);
+      }
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -106,16 +142,7 @@ function TraceabilityTable({
                     </button>
                     <button
                       className="text-red-600 hover:text-red-800"
-                      onClick={async () => {
-                        if (window.confirm('Bạn có chắc muốn xóa sản phẩm này?')) {
-                          await fetch(`http://192.168.5.119:3001/api/products/batch/${product.index}`, {
-                            method: 'DELETE'
-                          });
-                          fetch('http://192.168.5.119:3001/api/products')
-                            .then(res => res.json())
-                            .then(data => setProducts(data));
-                        }
-                      }}
+                      onClick={() => handleDelete(product)}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

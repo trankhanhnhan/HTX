@@ -7,6 +7,7 @@ export const menuItems = [
   { id: 'plot', label: 'Lô đất', icon: LandPlot },
   { id: 'crop-diary', label: 'Nhật ký trồng trọt', icon: Calendar },
   { id: 'traceability', label: 'Truy xuất nguồn gốc', icon: Package },
+  { id: 'production', label: 'Quản lý sản xuất', icon: Package },
   // { id: 'camera', label: 'Camera', icon: Camera },
   { id: 'reports', label: 'Báo cáo thống kê', icon: FileText },
   { id: 'weather', label: 'Thông tin thời tiết', icon: MapPin },

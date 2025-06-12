@@ -139,7 +139,7 @@ function UserManagement() {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {users.map(user => (
-              <tr key={user.id}>
+              <tr key={user.id || user._id || user.username}>
                 <td className="px-6 py-4">{user.id}</td>
                 <td className="px-6 py-4">{user.username}</td>
                 <td className="px-6 py-4">

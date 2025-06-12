@@ -53,9 +53,9 @@ function QRExportList({ exportedQRs, searchTerm, setSearchTerm }) {
                   <div>HSD: {qr.expiryDate || qr.HSD}</div>
                   <div>LH: {qr.phone}</div>
                   <div className="text-sm mt-2">
-                    <span className="font-bold text-green-700 text-base mt-2">DTHHoldings</span>
+                    <span className="font-bold text-green-700 text-base mt-2">Logo công ty</span>
                   </div>
-                  <div className="text-green-700 text-sm ">Hotline: 0847605605</div>
+                  <div className="text-green-700 text-sm ">Hotline: </div>
                 </div>
               </div>
               <button

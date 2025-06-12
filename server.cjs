@@ -1043,8 +1043,8 @@ app.delete('/api/products/batch/:index', (req, res) => {
               const newLines = lines.map((line, idx) => {
                 if (idx === 0) return line;
                 const cols = line.split(',');
-                if (cols[10] === index) {  
-                  cols[8] = '(Đã xóa khỏi truy xuất nguồn gốc)';
+                if (cols[11] === index) {  
+                  cols[9] = '(Đã xóa khỏi truy xuất nguồn gốc)';
                   return cols.join(',');
                 }
                 return line;

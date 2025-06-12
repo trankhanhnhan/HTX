@@ -16,6 +16,7 @@ import QRExportModal from './components/QRExportModal';
 import QRImageModal from './components/QRImageModal';
 import Login from './components/Login';
 import UserManagement from './components/UserManagement';
+import ProductionManagement from './components/ProductionManagement';
 import {
   useProducts, useCropLogs, useProductTypes, useCropDiaries,
   useCompletedDiaries, useExportedQRs
@@ -237,6 +238,9 @@ function App() {
                   totalQRCodes={totalQRCodes}
                 />
               )}
+              {activeMenu === 'production' && (
+                <ProductionManagement />
+              )}
               {activeMenu === 'products' && (
                 <ProductTypes
                   productTypes={productTypes}
@@ -257,7 +261,7 @@ function App() {
               {activeMenu === 'users' && user?.role === 'admin' && (
                 <UserManagement />
               )}
-              {activeMenu !== 'overview' && activeMenu !== 'products' && activeMenu !== 'plot' && activeMenu !== 'traceability' && activeMenu !== 'crop-diary' && activeMenu !== 'reports' && activeMenu !== 'users' && (
+              {activeMenu !== 'overview' && activeMenu !== 'products' && activeMenu !== 'plot' && activeMenu !== 'traceability' && activeMenu !== 'crop-diary' && activeMenu !== 'reports' && activeMenu !== 'production' && activeMenu !== 'users' && (
                 <div className="bg-white rounded-lg shadow p-8 text-center">
                   <div className="mb-4">
                     {(() => {
