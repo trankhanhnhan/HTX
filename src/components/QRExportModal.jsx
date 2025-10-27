@@ -1,6 +1,30 @@
 import React from 'react';
+import { API_BASE_URL } from '../services/api';
 
 function QRExportModal({ qrEdit, setQrEdit, handleExportQR }) {
+  // Hàm xuất QR sẽ gọi API lưu dữ liệu vào MongoDB
+  const exportQR = async (data) => {
+    try {
+      // Đảm bảo truyền đúng index để backend xác định sản phẩm truy xuất
+      const res = await fetch(`${API_BASE_URL}/export-qr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          index: data.index,
+          weight: data.weight,
+          phone: data.phone,
+          expiryDate: data.expiryDate
+        })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || 'Lỗi khi lưu dữ liệu QR!');
+      }
+    } catch (err) {
+      alert(err.message || 'Lỗi khi lưu dữ liệu QR!');
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-sm">
@@ -43,8 +67,9 @@ function QRExportModal({ qrEdit, setQrEdit, handleExportQR }) {
           </button>
           <button
             className="px-4 py-2 bg-green-600 text-white rounded"
-            onClick={() => {
-              handleExportQR(qrEdit);
+            onClick={async () => {
+              await exportQR(qrEdit);
+              if (handleExportQR) handleExportQR(qrEdit);
               setQrEdit(null);
             }}
           >

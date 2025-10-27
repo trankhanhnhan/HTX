@@ -1,7 +1,14 @@
 import html2canvas from "html2canvas";
 import { saveAs } from "file-saver";
 
-// Định dạng ngày
+/**
+ * Chuyển đổi định dạng ngày từ YYYY-MM-DD sang DD/MM/YYYY
+ * @param {string} dateStr - Chuỗi ngày cần chuyển đổi (format: YYYY-MM-DD hoặc DD/MM/YYYY)
+ * @returns {string} Ngày đã được định dạng (DD/MM/YYYY)
+ * @example
+ * displayDate('2025-06-13') // returns '13/06/2025'
+ * displayDate('13/06/2025') // returns '13/06/2025'
+ */
 export function displayDate(dateStr) {
   if (!dateStr) return '';
   if (dateStr.includes('/')) return dateStr;
@@ -9,7 +16,13 @@ export function displayDate(dateStr) {
   return `${d}/${m}/${y}`;
 }
 
-// Định dạng hạn sử dụng
+/**
+ * Chuyển đổi định dạng ngày hết hạn sang DD/MM/YYYY
+ * @param {string} expiryDate - Ngày hết hạn cần chuyển đổi
+ * @returns {string} Ngày hết hạn đã được định dạng (DD/MM/YYYY)
+ * @example
+ * displayExpiryDate('2025-12-31') // returns '31/12/2025'
+ */
 export function displayExpiryDate(expiryDate) {
   if (!expiryDate) return '';
   const date = new Date(expiryDate);
@@ -117,8 +130,8 @@ export async function downloadQRAsWord(qr) {
               </td>
             </tr>
           </table>
-          <div class="qr-footer">DTHHoldings</div>
-          <div class="qr-hotline">Hotline: 0847605605</div>
+          <div class="qr-footer"><img src="D:/CodeDemo/demoHTX-tailwind - Copy/src/smartlook-0.png" alt="Logo Công ty" style="height:60px;object-fit:contain;" /></div>
+          <div class="qr-hotline">Hotline: </div>
         </div>
       </body>
       </html>
@@ -147,7 +160,7 @@ export async function handleExportQR(product, setExportQRProduct, setExportedQRs
     link.href = canvas.toDataURL();
     link.click();
 
-    await fetch('http://192.168.5.119:3001/api/export-qr', {
+    await fetch(`${API_BASE_URL}/export-qr`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -161,7 +174,7 @@ export async function handleExportQR(product, setExportQRProduct, setExportedQRs
       })
     });
 
-    fetch('http://192.168.5.119:3001/api/exported-qr')
+    fetch(`${API_BASE_URL}/exported-qr`)
       .then(res => res.json())
       .then(data => setExportedQRs(data));
 

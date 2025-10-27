@@ -1,30 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import SidebarMenu, { menuItems } from './menu.jsx';
-import ProductDetail from './ProductDetail';
-import Overview from './overview';
-import ProductTypes from './ProductTypes';
-import Plot from './Plot';
-import CropDiary from './CropDiary';
-import Report from './Report';
-import TraceabilityTable from './components/TraceabilityTable';
-import QRExportList from './components/QRExportList';
+import SidebarMenu, { menuItems } from './components/menu.jsx';
+import ProductDetail from './pages/ProductDetail.jsx';
+import Overview from './pages/overview.jsx';
+import ProductTypes from './pages/ProductTypes.jsx';
+import Plot from './pages/Plot.jsx';
+import CropDiary from './pages/CropDiary.jsx';
+import Report from './pages/Report.jsx';
+import TraceabilityTable from './pages/TraceabilityTable.jsx';
+import QRExportList from './pages/QRExportList.jsx';
 import AddFormModal from './components/AddFormModal';
 import AddTypeModal from './components/AddTypeModal';
 import EditTypeModal from './components/EditTypeModal';
 import QRExportModal from './components/QRExportModal';
 import QRImageModal from './components/QRImageModal';
-import Login from './components/Login';
+import Login from './pages/Login.jsx';
 import UserManagement from './components/UserManagement';
 import ProductionManagement from './components/ProductionManagement';
 import {
-  useProducts, useCropLogs, useProductTypes, useCropDiaries,
+  useProducts, useProductTypes, useCropDiaries,
   useCompletedDiaries, useExportedQRs
 } from './hooks/dataHooks';
 import {
   Settings, Menu, X, Sprout, User, QrCode, Package, Users
 } from 'lucide-react';
 import { displayDate, displayExpiryDate, downloadQRAsWord } from './utils/Utils';
+import { API_BASE_URL } from './services/api';
 
 function App() {
   // --- State ---
@@ -65,19 +66,33 @@ function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Thêm state và fetch processStages (quy trình sản xuất)
+  const [processStages, setProcessStages] = useState([]);
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/prod-process`)
+      .then(res => res.json())
+      .then(data => setProcessStages(data));
+  }, []);
+
   // --- Data fetching ---
   useProducts(setProducts);
-  useCropLogs(setCropLogs);
   useProductTypes(setProductTypes);
   useCropDiaries(setDiaryList);
   useCompletedDiaries(setCompletedDiaries);
 
   // Fetch danh sách QR ngay khi component mount
   useEffect(() => {
-    fetch('http://192.168.5.119:3001/api/exported-qr')
+    fetch(`${API_BASE_URL}/products`)
       .then(res => res.json())
       .then(data => setExportedQRs(data));
   }, []); // Chạy 1 lần khi mount
+
+  // Fetch danh sách QR đã xuất khi component mount
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/exported-qr`)
+      .then(res => res.json())
+      .then(data => setExportedQRs(data));
+  }, []);
 
   // --- Derived values ---
   const filteredProductList = products.filter(product =>
@@ -112,7 +127,7 @@ function App() {
   };
 
   async function handleExportQR(qrEdit) {
-    const res = await fetch(`http://localhost:3001/api/product-info?index=${qrEdit.index}`);
+    const res = await fetch(`${API_BASE_URL}/product-info?index=${qrEdit.index}`);
     const product = await res.json();
     const exportData = {
       ...product,
@@ -120,13 +135,13 @@ function App() {
       phone: qrEdit.phone,
       expiryDate: qrEdit.expiryDate
     };
-    await fetch('http://localhost:3001/api/export-qr', {
+    await fetch(`${API_BASE_URL}/export-qr`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
         'x-role': user?.role || 'user'
       },
-      body: JSON.stringify(exportData)
+      body: JSON.stringify(exportData)  
     });
   }
 
@@ -239,7 +254,7 @@ function App() {
                 />
               )}
               {activeMenu === 'production' && (
-                <ProductionManagement />
+                <ProductionManagement processStages={processStages} setProcessStages={setProcessStages} />
               )}
               {activeMenu === 'products' && (
                 <ProductTypes
@@ -301,9 +316,7 @@ function App() {
                   {activeTab === 'qr-list' && (
                     <QRExportList
                       exportedQRs={exportedQRs}
-                      searchTerm={searchTerm}
-                      setSearchTerm={setSearchTerm}
-                      downloadQRAsWord={downloadQRAsWord}
+                      setExportedQRs={setExportedQRs}
                     />
                   )}
                 </div>

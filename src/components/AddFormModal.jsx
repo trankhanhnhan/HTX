@@ -1,23 +1,16 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from '../services/api';
 
 function AddFormModal({ productForm, setProductForm, setShowAddForm, editIndex, setEditIndex, setProducts }) {
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     try {
       setLoading(true);
-      const formData = new FormData();
-      formData.append('productionDate', productForm.productionDate);
-      formData.append('expiryDate', productForm.expiryDate);
-      formData.append('index', editIndex);
-
       const url = editIndex 
-        ? `http://192.168.5.119:3001/api/products/${editIndex}` 
-        : 'http://192.168.5.119:3001/api/products';
-
-      // Chuyển sang dùng JSON thay vì FormData để gửi dữ liệu
+        ? `${API_BASE_URL}/products/${editIndex}` 
+        : `${API_BASE_URL}/products`;
       const res = await fetch(url, {
         method: editIndex ? 'PUT' : 'POST',
         headers: {
@@ -29,12 +22,9 @@ function AddFormModal({ productForm, setProductForm, setShowAddForm, editIndex, 
           index: editIndex
         })
       });
-
       const data = await res.json();
-      
       if (data.success) {
-        // Refresh products list
-        const productsRes = await fetch('http://192.168.5.119:3001/api/products');
+        const productsRes = await fetch(`${API_BASE_URL}/products`);
         const products = await productsRes.json();
         setProducts(products);
         setShowAddForm(false);

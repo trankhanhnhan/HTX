@@ -1,3 +1,16 @@
+# Hệ Thống Quản Lý và Truy Xuất Nguồn Gốc Sản Phẩm
+
+Hệ thống quản lý và truy xuất nguồn gốc sản phẩm được xây dựng bằng React và Tailwind CSS.
+
+## Tính năng chính
+
+- Quản lý sản phẩm và thông tin chi tiết
+- Quản lý người dùng và phân quyền
+- Theo dõi nhật ký canh tác
+- Tạo và quản lý mã QR code
+- Báo cáo và thống kê
+- Quản lý quy trình sản xuất
+
 ## Các chức năng chính
 
 ### 1. Quản lý loại sản phẩm

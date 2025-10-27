@@ -1,4 +1,5 @@
 import React from 'react';
+import { API_BASE_URL } from '../services/api';
 
 function EditTypeModal({ editTypeForm, setEditTypeForm, setShowEditTypeForm, setProductTypes }) {
   const userRole = JSON.parse(localStorage.getItem('user'))?.role;
@@ -15,13 +16,13 @@ function EditTypeModal({ editTypeForm, setEditTypeForm, setShowEditTypeForm, set
       if (editTypeForm.image instanceof File) {
         formData.append('image', editTypeForm.image);
       }
-      const res = await fetch(`http://192.168.5.119:3001/api/product-types/${editTypeForm.oldProductId || editTypeForm.productId}`, {
+      const res = await fetch(`${API_BASE_URL}/product-types/${editTypeForm.oldProductId || editTypeForm.productId}`, {
         method: 'PUT',
         body: formData
       });
       const data = await res.json();
       if (data.success) {
-        fetch('http://192.168.5.119:3001/api/product-types')
+        fetch(`${API_BASE_URL}/product-types`)
           .then(res => res.json())
           .then(data => setProductTypes(data));
         setShowEditTypeForm(false);
@@ -65,7 +66,7 @@ function EditTypeModal({ editTypeForm, setEditTypeForm, setShowEditTypeForm, set
                 src={
                   editTypeForm.image.startsWith('http')
                     ? editTypeForm.image
-                    : `http://192.168.5.119:3001${editTypeForm.image.startsWith('/') ? editTypeForm.image : '/' + editTypeForm.image}`
+                    : `${API_BASE_URL.replace('/api', '')}${editTypeForm.image.startsWith('/') ? editTypeForm.image : '/' + editTypeForm.image}`
                 }
                 alt="Ảnh hiện tại"
                 className="w-16 h-16 object-cover rounded border"

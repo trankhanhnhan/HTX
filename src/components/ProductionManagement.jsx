@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { API_BASE_URL } from '../services/api';
 
 function ProductionManagement() {
   const [product, setProduct] = useState(null);
@@ -8,43 +9,20 @@ function ProductionManagement() {
   const [editingStage, setEditingStage] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [groupedProducts, setGroupedProducts] = useState({});
   const [expandedIndexes, setExpandedIndexes] = useState({});
 
   // Get product index from URL
   const location = useLocation();
   const currentPath = location.pathname;
-  const productIndex = currentPath.includes('/product/') 
-    ? currentPath.split('/product/')[1]
+  const productIndex = currentPath.includes('/prod-process') 
+    ? currentPath.split('/prod-process')[1]
     : 'M7R5Eg85B6';
 
   useEffect(() => {
-    // Fetch all products
-    const fetchAllProducts = async () => {
-      try {
-        const res = await fetch('http://192.168.5.119:3001/api/products');
-        if (!res.ok) throw new Error('Không thể kết nối với server');
-        const data = await res.json();
-        
-        // Group products by index
-        const grouped = data.reduce((acc, product) => {
-          if (!acc[product.index]) {
-            acc[product.index] = [];
-          }
-          acc[product.index].push(product);
-          return acc;
-        }, {});
-        
-        setGroupedProducts(grouped);
-      } catch (err) {
-        setError(`Lỗi khi tải thông tin sản phẩm: ${err.message}`);
-      }
-    };
-
     // Fetch production stages
     const fetchProductionStages = async () => {
       try {
-        const res = await fetch('http://192.168.5.119:3001/api/prod-process');
+        const res = await fetch(`${API_BASE_URL}/prod-process`);
         if (!res.ok) throw new Error('Không thể kết nối với server');
         const data = await res.json();
         setProcessStages(data);
@@ -53,7 +31,6 @@ function ProductionManagement() {
       }
     };
 
-    fetchAllProducts();
     fetchProductionStages();
   }, [location]);
 
@@ -66,7 +43,7 @@ function ProductionManagement() {
         return;
       }
 
-      const res = await fetch('http://192.168.5.119:3001/api/prod-process', {
+      const res = await fetch(`${API_BASE_URL}/prod-process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -88,7 +65,7 @@ function ProductionManagement() {
         setSuccess('Thêm công đoạn thành công');
         setEditingStage(null);
         // Refresh all stages
-        const stagesRes = await fetch('http://192.168.5.119:3001/api/prod-process');
+        const stagesRes = await fetch(`${API_BASE_URL}/prod-process`);
         const stagesData = await stagesRes.json();
         setProcessStages(stagesData);
       } else {
@@ -126,130 +103,76 @@ function ProductionManagement() {
 
       {/* Products Grouped by Index */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-        {Object.entries(groupedProducts).map(([index, products]) => (
-          <div 
-            key={index} 
+        {processStages.map((group) => (
+          <div
+            key={group.index}
             className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 h-fit relative"
           >
-            {/* Header and Products List - Make entire area clickable */}
-            <div 
-              className="p-6 cursor-pointer"
-              onClick={(e) => handleCardClick(e, index)}
-            >
+            <div className="p-6 cursor-pointer" onClick={e => handleCardClick(e, group.index)}>
               <div className="flex justify-between items-center group">
                 <div className="flex items-center space-x-3">
-                  {expandedIndexes[index] ? 
+                  {expandedIndexes[group.index] ?
                     <ChevronDown className="w-5 h-5 text-gray-400 group-hover:text-gray-600" /> :
                     <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
                   }
                   <h3 className="text-lg font-semibold text-gray-800">
-                    Mã sản xuất: <span className="text-green-600">{index}</span>
+                    Mã sản xuất: <span className="text-green-600">{group.index}</span>
                   </h3>
                 </div>
               </div>
-
-              {/* First 4 products */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                {products.slice(0, 4).map((product, idx) => (
-                  <div 
-                    key={idx} 
-                    className="border border-gray-200 rounded-lg p-4 hover:border-green-500 transition-colors duration-200"
-                  >
-                    <div className="text-sm text-gray-600 mb-2">
-                      <span className="font-medium text-gray-800 block truncate">
-                        Mã SP: {product.productId}
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      <span className="font-medium text-gray-800 block truncate">
-                        Tên: {product.name}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+              <div className="mt-2 text-sm text-gray-700">
+                <div><span className="font-semibold">Tên sản phẩm:</span> {group.name}</div>
+                <div><span className="font-semibold">Mã sản phẩm:</span> {group.productId}</div>
               </div>
-
-              {products.length > 4 && !expandedIndexes[index] && (
-                <div className="text-gray-500 mt-3 text-sm italic">
-                  và {products.length - 4} sản phẩm khác...
-                </div>
-              )}
             </div>
-
-            {/* Expanded content */}
-            {expandedIndexes[index] && (
+            {expandedIndexes[group.index] && (
               <div className="border-t">
                 <div className="p-6">
-                  {/* Additional products */}
-                  {products.length > 4 && (
-                    <div className="mb-6">
-                      <h4 className="font-medium text-gray-700 mb-3">Tất cả sản phẩm trong lô:</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {products.slice(4).map((product, idx) => (
-                          <div 
-                            key={idx + 4} 
-                            className="border border-gray-200 rounded-lg p-4 hover:border-green-500 transition-colors duration-200"
-                          >
-                            <div className="text-sm text-gray-600">Mã SP: <span className="font-medium text-gray-800">{product.productId}</span></div>
-                            <div className="text-sm text-gray-600 mt-1">Tên: <span className="font-medium text-gray-800">{product.name}</span></div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-medium text-gray-700">Các công đoạn sản xuất:</h4>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setEditingStage({
+                          stage: '',
+                          content: '',
+                          date: '',
+                          imageProd: '',
+                          index: group.index
+                        });
+                      }}
+                      className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Thêm công đoạn</span>
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    {group.stages.map((stage, stageIdx) => (
+                      <div key={stageIdx} className="border border-gray-200 rounded-lg p-4">
+                        <div>
+                          <h4 className="font-medium text-gray-800">
+                            Công việc {stageIdx + 1}: {stage.stage}
+                          </h4>
+                          <p className="text-gray-600 mt-2">{stage.content}</p>
+                          <p className="text-sm text-gray-500 mt-2">
+                            Ngày: {stage.date ? (stage.date.includes(":") ? stage.date : new Date(stage.date).toLocaleDateString('vi-VN')) : ''}
+                          </p>
+                        </div>
+                        {stage.imageProd && stage.imageProd.trim() && (
+                          <div className="mt-3 flex gap-3 overflow-x-auto pb-2">
+                            {stage.imageProd.split(',').map((img, i) => (
+                              <img
+                                key={i}
+                                src={img.trim().replace(/^"|"$/g, '')}
+                                alt={`Ảnh ${i + 1}`}
+                                className="w-24 h-24 object-cover rounded-lg border border-gray-200"
+                              />
+                            ))}
                           </div>
-                        ))}
+                        )}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Production Stages */}
-                  <div>
-                    <div className="flex justify-between items-center mb-4">
-                      <h4 className="font-medium text-gray-700">Các công đoạn sản xuất:</h4>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingStage({ 
-                            stage: '', 
-                            content: '', 
-                            date: '', 
-                            imageProd: '',
-                            index: index 
-                          });
-                        }}
-                        className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Thêm công đoạn</span>
-                      </button>
-                    </div>
-                    
-                    <div className="space-y-4">
-                      {processStages
-                        .filter(stage => stage.index === index)
-                        .map((stage, stageIdx) => (
-                          <div key={stageIdx} className="border border-gray-200 rounded-lg p-4">
-                            <div>
-                              <h4 className="font-medium text-gray-800">
-                                Công việc {stageIdx + 1}: {stage.stage}
-                              </h4>
-                              <p className="text-gray-600 mt-2">{stage.content}</p>
-                              <p className="text-sm text-gray-500 mt-2">
-                                Ngày: {new Date(stage.date).toLocaleDateString('vi-VN')}
-                              </p>
-                            </div>
-                            
-                            {stage.imageProd && (
-                              <div className="mt-3 flex gap-3 overflow-x-auto pb-2">
-                                {stage.imageProd.split(',').map((img, i) => (
-                                  <img
-                                    key={i}
-                                    src={img.trim().replace(/^"|"$/g, '')}
-                                    alt={`Ảnh ${i + 1}`}
-                                    className="w-24 h-24 object-cover rounded-lg border border-gray-200"
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                    </div>
+                    ))}
                   </div>
                 </div>
               </div>

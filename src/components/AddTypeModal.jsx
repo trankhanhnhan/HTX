@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from '../services/api';
 
 function AddTypeModal({ productForm, setProductForm, setShowAddTypeForm, setProductTypes }) {
   const [loading, setLoading] = useState(false);
@@ -14,14 +15,14 @@ function AddTypeModal({ productForm, setProductForm, setShowAddTypeForm, setProd
     formData.append('name', productForm.name);
     formData.append('image', productForm.image);
 
-    let res = await fetch('http://192.168.5.119:3001/api/product-types', {
+    let res = await fetch(`${API_BASE_URL}/product-types`, {
       method: 'POST',
       body: formData
     });
     const data = await res.json();
     setLoading(false);
     if (data.success) {
-      fetch('http://192.168.5.119:3001/api/product-types')
+      fetch(`${API_BASE_URL}/product-types`)
         .then(res => res.json())
         .then(data => setProductTypes(data));
       setShowAddTypeForm(false);

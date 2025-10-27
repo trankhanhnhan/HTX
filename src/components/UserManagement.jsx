@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../services/api';
 
 function UserManagement() {
   const [users, setUsers] = useState([]);
@@ -11,7 +12,7 @@ function UserManagement() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch('http://192.168.5.119:3001/api/users', {
+        const res = await fetch(`${API_BASE_URL}/users`, {
           headers: {
             'Authorization': `Bearer ${JSON.parse(localStorage.getItem('user'))?.token || ''}`,
             'x-role': JSON.parse(localStorage.getItem('user'))?.role || 'user'
@@ -34,29 +35,32 @@ function UserManagement() {
   // Create new user
   const handleCreateUser = async (e) => {
     e.preventDefault();
+    setError('');
+    setSuccess('');
     try {
-      const res = await fetch('http://192.168.5.119:3001/api/users', {
+      const res = await fetch(`${API_BASE_URL}/users`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${JSON.parse(localStorage.getItem('user')).token}`,
-          'x-role': JSON.parse(localStorage.getItem('user')).role
+          'x-role': userRole || 'user'
         },
         body: JSON.stringify(newUser)
       });
-      
       const data = await res.json();
-      
       if (data.success) {
-        setUsers([...users, data.user]);
+        setSuccess('Thêm tài khoản thành công!');
         setNewUser({ username: '', password: '', role: 'user' });
-        setSuccess('Tạo tài khoản thành công');
-        setError('');
+        // Refresh user list
+        const usersRes = await fetch(`${API_BASE_URL}/users`, {
+          headers: { 'x-role': userRole || 'user' }
+        });
+        const usersData = await usersRes.json();
+        setUsers(usersData.users);
       } else {
-        setError(data.message);
+        setError(data.message || 'Thêm tài khoản thất bại!');
       }
     } catch (err) {
-      setError('Lỗi khi tạo tài khoản');
+      setError('Lỗi khi thêm tài khoản!');
     }
   };
 

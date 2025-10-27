@@ -1,12 +1,109 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const csv = require('fast-csv');
 const cors = require('cors');
 const multer = require('multer');
 const upload = multer({ dest: path.join(__dirname, 'public', 'uploads') });
 const QRCode = require('qrcode');
 const bcrypt = require('bcryptjs');
+const mongoose = require('mongoose');
+
+// Kết nối MongoDB Atlas
+const MONGO_URI = 'mongodb+srv://bloguser:khanhnhan200402%40%40@cluster0.mmb1ikc.mongodb.net/demoHTX?retryWrites=true&w=majority&appName=Cluster0';
+mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('Đã kết nối MongoDB Cloud'))
+  .catch(err => console.error('Lỗi kết nối MongoDB:', err));
+
+// Schemas
+const ProductTypeSchema = new mongoose.Schema({
+  image: String,
+  productId: { type: String, unique: true },
+  name: String
+});
+const ProductType = mongoose.model('ProductType', ProductTypeSchema);
+
+const PlotSchema = new mongoose.Schema({
+  batchCode: { type: String, unique: true },
+  area: Number,
+  areaFree: Number
+});
+const Plot = mongoose.model('Plot', PlotSchema);
+
+const CropDiarySchema = new mongoose.Schema({
+  batchCode: String,
+  productId: String,
+  name: String,
+  origin: String,
+  season: String,
+  plantDate: String,
+  area: Number,
+  stage: String,
+  updates: Array,
+  note: String,
+  index: { type: String, unique: true },
+  outputQty: String,
+  tracingStatus: String // Thêm trường trạng thái truy xuất
+});
+const CropDiary = mongoose.model('CropDiary', CropDiarySchema);
+
+const ProductSchema = new mongoose.Schema({
+  image: String,
+  productId: String,
+  batchCode: String,
+  name: String,
+  origin: String,
+  productionDate: String,
+  expiryDate: String,
+  outputQty: String,
+  qrImage: String,
+  index: { type: String, unique: true }
+});
+const Product = mongoose.model('Product', ProductSchema);
+
+const UserSchema = new mongoose.Schema({
+  username: { type: String, unique: true },
+  password: String,
+  role: String,
+  created_at: String
+});
+const User = mongoose.model('User', UserSchema);
+
+const TraceSchema = new mongoose.Schema({
+  image: String,
+  productId: String,
+  batchCode: String,
+  name: String,
+  origin: String,
+  productionDate: String,
+  outputQty: String,
+  qrImage: String,
+  index: { type: String, unique: true }
+});
+const Trace = mongoose.model('Trace', TraceSchema);
+
+const ExportedQRs = new mongoose.Schema({
+  index: { type: String, unique: true },
+  qrImage: String,
+  weight: String,
+  phone: String,
+  expiryDate: String,
+  batchCode: String,
+  name: String,
+  productionDate: String
+});
+const ExportedQR = mongoose.model('ExportedQR', ExportedQRs);
+
+// Schema cho ProductionProcess
+const ProductionProcessSchema = new mongoose.Schema({
+  index: String,
+  stage: String,
+  content: String,
+  date: String,
+  imageProd: String,
+  name: String,
+  productId: String,
+});
+const ProductionProcess = mongoose.model('ProductionProcess', ProductionProcessSchema);
 
 const app = express();
 app.use(cors());
@@ -14,14 +111,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
-
-// Constants 
-const PORT = 3001;
-const PRODUCT_TYPE_CSV = path.join(__dirname, 'csv', 'productTypes.csv');
-const USERS_CSV = path.join(__dirname, 'csv', 'users.csv');
-
 app.listen(3001, '0.0.0.0', () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server is running on http://0.0.0.0:3001 (LAN)`);
 });
 
 function randomIndex(length = 10) {
@@ -35,1341 +126,349 @@ function randomIndex(length = 10) {
 
 // Định dạng tự động: nếu là số nguyên thì để nguyên, số thực thì giữ phần thập phân
 function formatNumberAuto(num) {
-  if (Number.isInteger(num)) return num.toString();
+  if (Number.isInteger(num)) return num.toString();prod-process
   return Number(num).toString();
 }
 
 // API thêm loại sản phẩm
-app.post('/api/product-types', upload.single('image'), (req, res) => {
+app.post('/api/product-types', upload.single('image'), async (req, res) => {
   const { id, name } = req.body;
   const imagePath = req.file ? `/uploads/${req.file.filename}` : '';
   if (!id || !name) return res.status(400).json({ success: false, message: 'Thiếu thông tin' });
-
-  // Đọc file CSV kiểm tra trùng id
-  const rows = fs.readFileSync(PRODUCT_TYPE_CSV, 'utf8').split('\n');
-  const isExist = rows.some(row => {
-    const cols = row.split(',');
-    return cols[1] && cols[1].trim() === id.trim();
-  });
-  if (isExist) {
-    return res.status(400).json({ success: false, message: 'Mã sản phẩm đã tồn tại!' });
+  try {
+    const isExist = await ProductType.findOne({ productId: id });
+    if (isExist) {
+      return res.status(400).json({ success: false, message: 'Mã sản phẩm đã tồn tại!' });
+    }
+    await ProductType.create({ image: imagePath, productId: id, name });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
-
-  // Ghi mới nếu không trùng
-  const row = `${imagePath},${id},${name}\n`;
-  fs.appendFileSync(PRODUCT_TYPE_CSV, row, 'utf8');
-  res.json({ success: true });
 });
 //////////////////////////////////////////////////////////////////////////////////////////
 
 // API thêm mã lô đất mới
-app.post('/api/plots', (req, res) => {
+app.post('/api/plots', async (req, res) => {
   const { batchCode, area } = req.body;
   if (!batchCode || !area) {
     return res.status(400).json({ success: false, message: 'Thiếu batchCode hoặc area' });
   }
-  const filePath = path.join(__dirname, 'csv', 'addPlot.csv');
-  let needHeader = false;
-  if (!fs.existsSync(filePath) || fs.readFileSync(filePath, 'utf8').trim() === '') {
-    needHeader = true;
-  }
-  // Kiểm tra trùng mã lô
-  if (fs.existsSync(filePath)) {
-    const lines = fs.readFileSync(filePath, 'utf8').split('\n').filter(Boolean);
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',');
-      if (cols[0] === batchCode) {
-        return res.status(400).json({ success: false, message: 'Mã lô đã tồn tại!' });
-      }
+  try {
+    const isExist = await Plot.findOne({ batchCode });
+    if (isExist) {
+      return res.status(400).json({ success: false, message: 'Mã lô đã tồn tại!' });
     }
+    await Plot.create({ batchCode, area, areaFree: area });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
-  const row = `${batchCode},${area},${area}\n`;
-  if (needHeader) {
-    fs.writeFileSync(filePath, 'batchCode,area,areaFree\n' + row, 'utf8');
-  } else {
-    fs.appendFileSync(filePath, row, 'utf8');
-  }
-  res.json({ success: true });
 });
 ////////////////////////////////////////////////////////////////////////////////////////
 
 // API thêm nhật ký mới
-app.post('/api/crop-diaries', (req, res) => {
+app.post('/api/crop-diaries', async (req, res) => {
   try {
-    const filePath = path.join(__dirname, 'csv', 'addNK.csv');
     let {
-      batchCode, productId, name, origin, season, plantDate, sowingDate, area, stage
+      batchCode, productId, name, origin, season, plantDate, sowingDate, area, stage, outputQty, imageProd
     } = req.body;
-
     plantDate = plantDate || sowingDate;
-
     if (!plantDate) {
       return res.status(400).json({ success: false, error: 'Thiếu ngày gieo trồng' });
     }
-
     // --- Cập nhật areaFree ---
-    const plotPath = path.join(__dirname, 'csv', 'addPlot.csv');
-    if (!fs.existsSync(plotPath)) {
+    const plot = await Plot.findOne({ batchCode });
+    if (!plot) {
       return res.status(400).json({ success: false, error: 'Không tìm thấy lô đất' });
     }
-    let plotLines = fs.readFileSync(plotPath, 'utf8').split('\n');
-    const header = plotLines[0];
-    plotLines = plotLines.filter(Boolean);
-    let updated = false;
-    for (let i = 1; i < plotLines.length; i++) {
-      const cols = plotLines[i].split(',');
-      if (cols[0] === batchCode) {
-        const areaFree = parseFloat(cols[2] || cols[1] || 0);
-        if (areaFree < parseFloat(area)) {
-          return res.status(400).json({ success: false, error: 'Diện tích trống không đủ!' });
-        }
-        cols[2] = (areaFree - parseFloat(area)).toFixed(2);
-        plotLines[i] = cols.join(',');
-        updated = true;
-        break;
-      }
+    if (plot.areaFree < parseFloat(area)) {
+      return res.status(400).json({ success: false, error: 'Diện tích trống không đủ!' });
     }
-    if (!updated) {
-      return res.status(400).json({ success: false, error: 'Không tìm thấy lô đất' });
-    }
-    fs.writeFileSync(plotPath, plotLines.join('\n'), 'utf8');
+    plot.areaFree = (plot.areaFree - parseFloat(area));
+    await plot.save();
     // --- hết cập nhật areaFree ---
-
-    // Tạo bản ghi nhật ký như cũ
     const index = randomIndex(10);
     const now = new Date();
     const dateString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-    const updates = [{
-      date: dateString,
+    const updates = [{ date: dateString, stage: stage || '', note: `Khởi tạo: ${stage || ''}` }];
+    await CropDiary.create({ batchCode, productId, name, origin, season, plantDate, area, stage, updates, note: `Khởi tạo: ${stage || ''}`, index, outputQty });
+    // Lưu vào ProductionProcess khi khởi tạo
+    await ProductionProcess.create({
+      index,
       stage: stage || '',
-      note: `Khởi tạo: ${stage || ''}`
-    }];
-    const updatesString = `"${JSON.stringify(updates).replace(/"/g, '""')}"`;
-
-    const newLine = [
-      batchCode, productId, name, origin, season, plantDate, area, stage, updatesString, `Khởi tạo: ${stage || ''}`, index
-    ].join(',');
-
-    let content = '';
-    if (!fs.existsSync(filePath) || fs.readFileSync(filePath, 'utf8').trim() === '') {
-      content = 'batchCode,productId,name,origin,season,plantDate,area,stage,updates,note,index\n';
-    } else {
-      content = fs.readFileSync(filePath, 'utf8');
-      if (!content.endsWith('\n')) content += '\n';
-    }
-    content += newLine + '\n';
-    fs.writeFileSync(filePath, content, 'utf8');
-
+      content: `Khởi tạo: ${stage || ''}`,
+      date: dateString,
+      imageProd: imageProd || ''
+    });
     res.json({ success: true, index, batchCode });
   } catch (error) {
-    console.error('Error creating diary:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 ///////////////////////////////////////////////////////////////////////////////////////
 
 // API Thêm sản phẩm
-app.post('/api/products', (req, res) => {
+app.post('/api/products', async (req, res) => {
   try {
     const newProduct = req.body;
-    const row = [
-      newProduct.image || '',
-      newProduct.productId || '',
-      newProduct.batchCode || '',
-      newProduct.name || '',
-      newProduct.origin || '',
-      newProduct.productionDate || '',
-      newProduct.expiryDate || '',
-      newProduct.outputQty || '',
-      newProduct.qrImage || ''
-    ].join(',');
-
-    const filePath = path.join(__dirname, 'csv', 'addSP.csv');
-    let content = '';
-
-    // Thêm header nếu file rỗng
-    if (!fs.existsSync(filePath) || fs.readFileSync(filePath, 'utf8').trim() === '') {
-      content = 'image,productId,batchCode,name,origin,productionDate,outputQty,qrImage,index\n';
-    } else {
-      content = fs.readFileSync(filePath, 'utf8').trim() + '\n';
-    }
-
-    // Xuống dòng mỗi khi thêm mới
-    content += row + '\n';
-    fs.writeFileSync(filePath, content, 'utf8');
-
+    await Product.create(newProduct);
     res.json({ success: true });
   } catch (error) {
-    console.error('Error adding product:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 ////////////////////////////////////////////////////////////////////////////////////////
 
-// API thêm vào truy xuất nguồn gốc
+// API thêm truy xuất nguồn gốc
 app.post('/api/trace', async (req, res) => {
-  const { batchCode, name, origin, productionDate, qrImage } = req.body;
-  const index = req.body.index || '';
-  let productId = req.body.productId;
-
   try {
-    // Lấy image từ productTypes.csv (nếu cần)
-    const productTypesPath = path.join(__dirname, 'csv', 'productTypes.csv');
-    let image = '';
-    if (fs.existsSync(productTypesPath)) {
-      const lines = fs.readFileSync(productTypesPath, 'utf8').split('\n').filter(Boolean);
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',');
-        if (cols[1] === productId) {
-          image = cols[0] || '';
-          break;
-        }
-      }
+    let traceData = req.body;
+    // Lấy thông tin sản phẩm từ ProductType
+    const productType = await ProductType.findOne({ productId: traceData.productId });
+    if (productType && productType.image) {
+      traceData.image = productType.image;
     }
-
-    // Lấy sản lượng từ addCompleteNK.csv
-    const completeNKPath = path.join(__dirname, 'csv', 'addCompleteNK.csv');
-    let outputQty = '';
-    if (fs.existsSync(completeNKPath)) {
-      const lines = fs.readFileSync(completeNKPath, 'utf8').split('\n');
-      const header = lines[0].split(',');
-      const batchCodeIdx = header.indexOf('batchCode');
-      const indexIdx = header.indexOf('index');
-      const outputQtyIdx = header.indexOf('outputQty');
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',');
-        if (cols[batchCodeIdx] === batchCode && cols[indexIdx] === index) {
-          outputQty = cols[outputQtyIdx] || '';
-          break;
-        }
-      }
+    // Lấy sản lượng từ CropDiary (outputQty)
+    const diary = await CropDiary.findOne({ index: traceData.index });
+    if (diary && diary.outputQty) {
+      traceData.outputQty = diary.outputQty || '';
+    } 
+    // Nếu chưa có mã QR thì tự động sinh
+    if (!traceData.qrImage) {
+      const qrContentValue = `SP:${traceData.productId};LO:${traceData.batchCode};NAME:${traceData.name};DATE:${traceData.productionDate}`;
+      traceData.qrImage = await QRCode.toDataURL(qrContentValue);
     }
-
-    // Tạo mã QR code với kích thước 500x500
-    const qrData = `http://192.168.5.119:5173/product/${index}`;
-    const qrImageData = await QRCode.toDataURL(qrData, { width: 450, margin: 2 });
-
-    const addSPPath = path.join(__dirname, 'csv', 'addSP.csv');
-    let needHeader = false;
-    if (!fs.existsSync(addSPPath) || fs.readFileSync(addSPPath, 'utf8').trim() === '') {
-      needHeader = true;
-    }
-    if (needHeader) {
-      fs.writeFileSync(addSPPath, 'image,productId,batchCode,name,origin,productionDate,expiryDate,outputQty,qrImage,index\n', 'utf8');
-    }
-
-    // Lấy ngày hoàn thành từ addCompleteNK.csv (nếu cần)
-    let productionDateValue = productionDate || '';
-    if (fs.existsSync(completeNKPath)) {
-      const lines = fs.readFileSync(completeNKPath, 'utf8').split('\n');
-      const header = lines[0].split(',');
-      const batchCodeIdx = header.indexOf('batchCode');
-      const noteIdx = header.indexOf('note');
-      const indexIdx = header.indexOf('index');
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',');
-        if (cols[batchCodeIdx] === batchCode && cols[indexIdx] === index) {
-          // Tìm ngày hoàn thành trong note
-          const match = cols[noteIdx] && cols[noteIdx].match(/Ngày hoàn thành: ([^|]+)/);
-          if (match) {
-            productionDateValue = match[1].trim();
-          }
-          break;
-        }
-      }
-    }
-
-    const row = [
-      image || '',
-      productId || '',
-      batchCode || '',
-      name || '',
-      origin || '',
-      productionDateValue || '',
-      '',
-      outputQty || '', // <-- lấy từ addCompleteNK.csv
-      `"${qrImageData || ''}"`,
-      index || ''
-    ].join(',');
-
-    // Thêm dòng mới
-    let content = fs.readFileSync(addSPPath, 'utf8');
-    if (!content.endsWith('\n')) content += '\n';
-    content += row + '\n';
-    fs.writeFileSync(addSPPath, content, 'utf8');
-
-    // Cập nhật trạng thái truy xuất trong addCompleteNK.csv
-    if (fs.existsSync(completeNKPath)) {
-      const lines = fs.readFileSync(completeNKPath, 'utf8').split('\n');
-      const header = lines[0];
-      const indexIdx = header.split(',').indexOf('index');
-      const newLines = lines.map((line, idx) => {
-        if (idx === 0) return line;
-        const cols = line.split(',');
-        if (cols[indexIdx] === (req.body.index || '')) {
-          cols[9] = 'Đã truy xuất'; 
-        }
-        return cols.join(',');
-      });
-      fs.writeFileSync(completeNKPath, newLines.join('\n'), 'utf8');
-    }
-    res.json({ success: true });
-
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-/////////////////////////////////////////////////////////////////////////////////////////
-
-//API xuất mã QR
-app.post('/api/export-qr', (req, res) => {
-  const filePath = path.join(__dirname, 'csv', 'addQR.csv');
-  const { productId, batchCode, name, productionDate, expiryDate, weight, phone, qrImage, index } = req.body;
-  let needHeader = false;
-  if (!fs.existsSync(filePath) || fs.readFileSync(filePath, 'utf8').trim() === '') {
-    needHeader = true;
-  }
-  const ws = fs.createWriteStream(filePath, { flags: 'a' });
-  if (needHeader) {
-    ws.write('productId,batchCode,name,productionDate,expiryDate,weight,phone,qrImage,index\n');
-  }
-  ws.write([productId, batchCode, name, productionDate, expiryDate, weight, phone, qrImage, index].map(x => `"${(x||'').replace(/"/g, '""')}"`).join(',') + '\n');
-  ws.end();
-  ws.on('finish', () => res.json({ success: true }));
-  ws.on('error', () => res.status(500).json({ success: false }));
-});
-///////////////////////////////////////////////////////////////////////////////////////
-
-// API cập nhật thông tin lô đất và đồng bộ batchCode ở các file liên quan
-app.put('/api/plots/:batchCode', (req, res) => {
-  const oldBatchCode = req.params.batchCode;
-  const { batchCode, area } = req.body;
-  const filePath = path.join(__dirname, 'csv', 'addPlot.csv');
-  if (!batchCode || !area) {
-    return res.status(400).json({ success: false, message: 'Thiếu batchCode hoặc area' });
-  }
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ success: false, message: 'Không tìm thấy file lô đất' });
-  }
-  const lines = fs.readFileSync(filePath, 'utf8').split('\n');
-  const header = lines[0];
-  let found = false;
-  const newLines = lines.map((line, idx) => {
-    if (idx === 0) return line;
-    if (!line.trim()) return '';
-    const cols = line.split(',');
-    if (cols[0] === oldBatchCode) {
-      found = true;
-      const oldArea = parseFloat(cols[1]);
-      const oldAreaFree = parseFloat(cols[2]);
-      const usedArea = oldArea - oldAreaFree;
-      const newArea = parseFloat(area);
-      if (isNaN(newArea) || newArea <= 0) {
-        return res.status(400).json({ success: false, message: 'Diện tích không hợp lệ!' });
-      }
-      if (newArea < usedArea) {
-        return res.status(400).json({ success: false, message: `Diện tích mới (${area}) nhỏ hơn diện tích đã sử dụng (${usedArea})!` });
-      }
-      let newAreaFree = newArea - usedArea;
-      if (newAreaFree < 0) newAreaFree = 0;
-      return [batchCode, newArea.toFixed(3), newAreaFree.toFixed(3)].join(',');
-    }
-    return line;
-  });
-  if (!found) {
-    return res.status(404).json({ success: false, message: 'Không tìm thấy lô đất cần sửa' });
-  }
-  if (!Array.isArray(newLines)) return;
-  fs.writeFileSync(filePath, newLines.join('\n'), 'utf8');
-
-  // --- Đồng bộ batchCode ở các file liên quan ---
-  const syncFiles = [
-    { path: path.join(__dirname, 'csv', 'addNK.csv'), batchCodeIdx: 0 },
-    { path: path.join(__dirname, 'csv', 'addCompleteNK.csv'), batchCodeIdx: 0 },
-    { path: path.join(__dirname, 'csv', 'addSP.csv'), batchCodeIdx: 2 }
-  ];
-  syncFiles.forEach(file => {
-    if (!fs.existsSync(file.path)) return;
-    const lines = fs.readFileSync(file.path, 'utf8').split('\n');
-    const synced = lines.map((line, idx) => {
-      if (idx === 0) return line;
-      if (!line.trim()) return '';
-      // Tách trường CSV an toàn
-      const cols = [];
-      let current = '';
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') inQuotes = !inQuotes;
-        if (char === ',' && !inQuotes) {
-          cols.push(current);
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      cols.push(current);
-      // So sánh batchCode sau khi trim và bỏ dấu nháy
-      const oldVal = (cols[file.batchCodeIdx] || '').replace(/^"|"$/g, '').trim();
-      if (oldVal === oldBatchCode) {
-        cols[file.batchCodeIdx] = batchCode;
-      }
-      return cols.join(',');
-    });
-    fs.writeFileSync(file.path, synced.join('\n'), 'utf8');
-  });
-
-  res.json({ success: true, message: 'Cập nhật lô đất và đồng bộ thành công' });
-});
-/////////////////////////////////////////////////////////////////////////////////////////
-
-// API sửa thông tin loại sản phẩm
-app.put('/api/product-types/:oldProductId', upload.single('image'), async (req, res) => {
-  try {
-    const oldProductId = req.params.oldProductId;
-    const newProductId = req.body.productId;
-    const newName = req.body.name;
-    const filePath = path.join(__dirname, 'csv', 'productTypes.csv');
-
-    // Đọc nội dung file
-    let content = fs.readFileSync(filePath, 'utf8');
-    let lines = content.split('\n').filter(Boolean);
-    const header = lines[0];
-
-    // Cập nhật trong productTypes.csv
-    const updatedLines = lines.map((line, idx) => {
-      if (idx === 0) return line;
-
-      const cols = line.split(',');
-      if (cols[1] === oldProductId) {
-        // Cập nhật thông tin
-        if (req.file) {
-          cols[0] = `/uploads/${req.file.filename}`;
-        }
-        cols[1] = newProductId; // Cập nhật mã sản phẩm mới
-        cols[2] = newName; // Cập nhật tên mới
-      }
-      return cols.join(',');
-    });
-
-    // Ghi file productTypes.csv
-    fs.writeFileSync(filePath, updatedLines.join('\n') + '\n', 'utf8');
-
-    // Cập nhật trong addNK.csv
-    const nkPath = path.join(__dirname, 'csv', 'addNK.csv');
-    if (fs.existsSync(nkPath)) {
-      content = fs.readFileSync(nkPath, 'utf8');
-      lines = content.split('\n').filter(Boolean);
-      const updatedNK = lines.map((line, idx) => {
-        if (idx === 0) return line;
-        const cols = line.split(',');
-        if (cols[1] === oldProductId) {
-          cols[1] = newProductId;
-          cols[2] = newName;
-        }
-        return cols.join(',');
-      });
-      fs.writeFileSync(nkPath, updatedNK.join('\n') + '\n', 'utf8');
-    }
-
-    // Cập nhật trong addNK.csv
-    const completeNKPath = path.join(__dirname, 'csv', 'addCompleteNK.csv');
-    if (fs.existsSync(completeNKPath)) {
-      content = fs.readFileSync(completeNKPath, 'utf8');
-      lines = content.split('\n').filter(Boolean);
-      const updatedaddCompleteNK = lines.map((line, idx) => {
-        if (idx === 0) return line;
-        const cols = line.split(',');
-        if (cols[1] === oldProductId) {
-          cols[1] = newProductId;
-          cols[2] = newName;
-        }
-        return cols.join(',');
-      });
-      fs.writeFileSync(completeNKPath, updatedaddCompleteNK.join('\n') + '\n', 'utf8');
-    }
-
-    // Cập nhật trong addSP.csv
-    const spPath = path.join(__dirname, 'csv', 'addSP.csv');
-    if (fs.existsSync(spPath)) {
-      content = fs.readFileSync(spPath, 'utf8');
-      lines = content.split('\n').filter(Boolean);
-      const updatedSP = lines.map((line, idx) => {
-        if (idx === 0) return line;
-        const cols = line.split(',');
-        if (cols[1] === oldProductId) {
-          cols[1] = newProductId;
-          cols[3] = newName;
-        }
-        return cols.join(',');
-      });
-      fs.writeFileSync(spPath, updatedSP.join('\n') + '\n', 'utf8');
-    }
-
-    res.json({
-      success: true,
-      message: 'Cập nhật thành công',
-      image: req.file ? `/uploads/${req.file.filename}` : undefined
-    });
-
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-});
-///////////////////////////////////////////////////////////////////////////////////////
-
-// API sửa thông tin nhật ký
-app.put('/api/crop-diaries/:index', async (req, res) => {
-try {
-    const index = req.params.index;
-    const filePath = path.join(__dirname, 'csv', 'addNK.csv');
-    const updates = req.body.updates || [];
-    let content = fs.readFileSync(filePath, 'utf8');
-    let lines = content.split('\n').filter(Boolean);
-
-    // Lấy header
-    const header = lines[0];
-    const headers = header.split(',');
-
-    let oldArea = null;
-    let batchCode = null;
-    let newArea = null;
-
-    const updatedLines = lines.map((line, idx) => {
-      if (idx === 0) return line;
-
-      const cols = [];
-      let current = '';
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') inQuotes = !inQuotes;
-        if (char === ',' && !inQuotes) {
-          cols.push(current);
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      cols.push(current);
-      while (cols.length < 11) cols.push('');
-
-      if (cols[10] === index) {
-        // Lưu lại diện tích cũ và batchCode để cập nhật areaFree
-        oldArea = parseFloat(cols[6]) || 0;
-        batchCode = cols[0];
-
-         if (typeof req.body.updates !== 'undefined') {
-          cols[8] = `"${JSON.stringify(updates).replace(/"/g, '""')}"`;
-        }
-
-        // Nếu có cập nhật diện tích
-        if (typeof req.body.area !== 'undefined' && req.body.area !== cols[6]) {
-          newArea = parseFloat(req.body.area) || 0;
-          cols[6] = req.body.area;
-        }
-
-        // Nếu là cập nhật giai đoạn (có trường stage)
-        if (req.body.stage) {
-          cols[7] = req.body.stage;
-          cols[9] = req.body.note || "Cập nhật giai đoạn";
-        }
-
-        // Nếu là chỉnh sửa thông tin
-        const changes = [];
-        if (typeof req.body.origin !== 'undefined' && req.body.origin !== cols[3]) {
-          changes.push(`Nguồn gốc: ${cols[3]} → ${req.body.origin}`);
-          cols[3] = req.body.origin;
-        }
-        if (typeof req.body.season !== 'undefined' && req.body.season !== cols[4]) {
-          changes.push(`Mùa vụ: ${cols[4]} → ${req.body.season}`);
-          cols[4] = req.body.season;
-        }
-        if (typeof req.body.sowingDate !== 'undefined' && req.body.sowingDate !== cols[5]) {
-          changes.push(`Ngày gieo trồng: ${cols[5]} → ${req.body.sowingDate}`);
-          cols[5] = req.body.sowingDate;
-        }
-        if (typeof req.body.area !== 'undefined' && req.body.area !== cols[6]) {
-          changes.push(`Diện tích: ${cols[6]} → ${req.body.area}`);
-          cols[6] = req.body.area;
-        }
-
-        // Ghi lịch sử đổi loại sản phẩm
-        if (typeof req.body.productId !== 'undefined' && req.body.productId !== cols[1]) {
-          // Lấy thông tin sản phẩm mới từ productTypes.csv
-          const productTypesPath = path.join(__dirname, 'csv', 'productTypes.csv');
-          let newProductId = '', newName = '', newImage = '', newExpiry = '';
-          if (fs.existsSync(productTypesPath)) {
-            const ptLines = fs.readFileSync(productTypesPath, 'utf8').split('\n').filter(Boolean);
-            for (let i = 1; i < ptLines.length; i++) {
-              const ptCols = ptLines[i].split(',');
-              if (ptCols[1] === req.body.productId) {
-                newImage = ptCols[0] || '';
-                newProductId = ptCols[1] || '';
-                newName = ptCols[2] || '';
-                newExpiry = ptCols[3] || '';
-                break;
-              }
-            }
-          }
-          changes.push(`Đổi loại sản phẩm: ${cols[2]} → ${req.body.name}`);
-          cols[1] = req.body.productId;
-          cols[2] = req.body.name;
-          if (newName) cols[2] = newName;
-        }
-
-        // Ghi lại updates dạng mảng phẳng
-        const updatesString = `"${JSON.stringify(updates).replace(/"/g, '""')}"`;
-        cols[8] = updatesString;
-
-        // Chỉ join đúng 11 trường
-        return cols.slice(0, 11).join(',');
-      }
-      return line;
-    });
-
-    fs.writeFileSync(filePath, updatedLines.join('\n') + '\n', 'utf8');
-
-    // --- Cập nhật areaFree nếu diện tích thay đổi ---
-    if (batchCode && oldArea !== null && newArea !== null && oldArea !== newArea) {
-      const plotPath = path.join(__dirname, 'csv', 'addPlot.csv');
-      if (fs.existsSync(plotPath)) {
-        let plotLines = fs.readFileSync(plotPath, 'utf8').split('\n');
-        plotLines = plotLines.map((line, idx) => {
-          if (idx === 0) return line;
-          const cols = line.split(',');
-          if (cols[0] === batchCode) {
-            // Cộng lại diện tích cũ, trừ đi diện tích mới
-            const newAreaFree = parseFloat(cols[2]) + oldArea - newArea;
-            cols[2] = formatNumberAuto(newAreaFree);
-            return cols.join(',');
-          }
-          return line;
-        });
-        fs.writeFileSync(plotPath, plotLines.join('\n'), 'utf8');
-      }
-    }
-    
-    if (req.body.stage === 'Hoàn thành') {
-  const completePath = path.join(__dirname, 'csv', 'addCompleteNK.csv');
-  let needHeader = false;
-  if (!fs.existsSync(completePath) || fs.readFileSync(completePath, 'utf8').trim() === '') {
-    needHeader = true;
-  }
-  // Lấy dòng vừa hoàn thành từ addNK.csv
-  const completedLine = updatedLines.find((line, idx) => {
-    if (idx === 0) return false;
-    const cols = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"') inQuotes = !inQuotes;
-      if (char === ',' && !inQuotes) {
-        cols.push(current);
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    cols.push(current);
-    return cols[10] === req.params.index;
-  });
-  if (completedLine) {
-    let cols = completedLine.split(',');
-    // Đảm bảo có đủ 12 trường (outputQty là cột số 7, index 7)
-    while (cols.length < 12) cols.push('');
-    // Ghi sản lượng vào cột outputQty (index 7)
-    if (typeof req.body.outputQty !== 'undefined') {
-      cols[7] = req.body.outputQty;
-    }
-    cols[8] = 'Hoàn thành'; // stage
-    cols[9] = 'Chưa truy xuất'; // tracingStatus
-    // Thêm ngày hoàn thành vào note
-    const now = new Date();
-    const completeDate = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-    let note = cols[10];
-    if (!note || note.trim().startsWith('{') || note.trim().startsWith('"')) {
-      note = `Hoàn thành: ${cols[8] || ''}`;
-    }
-    note += ` | Ngày hoàn thành: ${completeDate}`;
-    cols[10] = note;
-    cols[11] = req.params.index; // index
-    let newLine = cols.slice(0, 12).join(',');
-    let content = '';
-    if (needHeader) {
-      content = 'batchCode,productId,name,origin,season,plantDate,area,outputQty,stage,tracingStatus,note,index\n';
+    const exist = await Trace.findOne({ index: traceData.index });
+    if (exist) {
+      await Trace.findOneAndUpdate({ index: traceData.index }, traceData, { new: true });
     } else {
-      content = fs.readFileSync(completePath, 'utf8');
-      if (!content.endsWith('\n')) content += '\n';
+      await Trace.create(traceData);
     }
-    content += newLine + '\n';
-    fs.writeFileSync(completePath, content, 'utf8');
-  } else {
-    console.warn('[Hoàn thành] Không tìm thấy dòng với index:', req.params.index);
-  }
-}
-
-    // Nếu có cập nhật productId, đồng bộ lại các trường liên quan từ productTypes.csv
-    if (typeof req.body.productId !== 'undefined') {
-    const productTypesPath = path.join(__dirname, 'csv', 'productTypes.csv');
-    if (fs.existsSync(productTypesPath)) {
-      const lines = fs.readFileSync(productTypesPath, 'utf8').split('\n').filter(Boolean);
-      // Giả sử header: image,productId,name,expiryDate
-      let newProductId = '', newName = '', newExpiry = '', newImage = '';
-     for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',');
-      if (cols[1] === req.body.productId) {
-        newImage = cols[0] || '';
-        newProductId = cols[1] || '';
-        newName = cols[2] || '';
-        newExpiry = cols[3] || '';
-        break;
-      }
-    }
-
-    // Đồng bộ addNK.csv
-    const filePath = path.join(__dirname, 'csv', 'addNK.csv');
-    if (fs.existsSync(filePath)) {
-      const lines = fs.readFileSync(filePath, 'utf8').split('\n');
-      const header = lines[0].split(',');
-      const productIdIdx = header.indexOf('productId');
-      const nameIdx = header.indexOf('name');
-      const imageIdx = header.indexOf('image');
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',');
-        if (cols[10] === req.params.index) {
-          if (newName) cols[nameIdx] = newName;
-          if (req.body.productId) cols[productIdIdx] = req.body.productId;
-          if (imageIdx !== -1 && newImage) cols[imageIdx] = newImage; // cập nhật image
-          lines[i] = cols.join(',');
-        }
-      }
-      fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
-    }
-
-    // Đồng bộ addCompleteNK.csv
-    const completeNKPath = path.join(__dirname, 'csv', 'addCompleteNK.csv');
-    if (fs.existsSync(completeNKPath)) {
-      const lines = fs.readFileSync(completeNKPath, 'utf8').split('\n');
-      const header = lines[0].split(',');
-      const productIdIdx = header.indexOf('productId');
-      const nameIdx = header.indexOf('name');
-      const imageIdx = header.indexOf('image');
-      const originIdx = header.indexOf('origin');
-      const seasonIdx = header.indexOf('season');
-      const plantDateIdx = header.indexOf('plantDate');
-      const areaIdx = header.indexOf('area');
-      const indexIdx = header.indexOf('index');
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',');
-        if (cols[indexIdx] === req.params.index) {
-          if (newName) cols[nameIdx] = newName;
-          if (req.body.productId) cols[productIdIdx] = req.body.productId;
-          if (req.body.origin) cols[originIdx] = req.body.origin;
-          if (req.body.season) cols[seasonIdx] = req.body.season;
-          if (req.body.plantDate) cols[plantDateIdx] = req.body.plantDate;
-          if (req.body.area) cols[areaIdx] = req.body.area;
-          if (imageIdx !== -1 && newImage) cols[imageIdx] = newImage; // cập nhật image
-          lines[i] = cols.join(',');
-        }
-      }
-      fs.writeFileSync(completeNKPath, lines.join('\n'), 'utf8');
-    }
-
-   // Trong route PUT /api/crop-diaries/:index, sửa lại phần đồng bộ addSP.csv:
-const addSPPath = path.join(__dirname, 'csv', 'addSP.csv');
-if (fs.existsSync(addSPPath)) {
-  const lines = fs.readFileSync(addSPPath, 'utf8').split('\n');
-  const header = lines[0].split(',');
-  
-  // Lấy index của các cột
-  const imageIdx = header.indexOf('image');
-  const productIdIdx = header.indexOf('productId');
-  const batchCodeIdx = header.indexOf('batchCode');
-  const nameIdx = header.indexOf('name');
-  const originIdx = header.indexOf('origin');
-  const productionDateIdx = header.indexOf('productionDate');
-  const expiryDateIdx = header.indexOf('expiryDate');
-  const outputQtyIdx = header.indexOf('outputQty');
-  const qrImageIdx = header.indexOf('qrImage');
-  const indexIdx = header.indexOf('index');
-  const qrCodeIdx = header.indexOf('qrCode');
-
-  const updatedLines = lines.map((line, idx) => {
-    if (idx === 0) return line;
-    
-    // Parse CSV line an toàn
-    const cols = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"') inQuotes = !inQuotes;
-      if (char === ',' && !inQuotes) {
-        cols.push(current);
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    cols.push(current);
-
-    if (cols[indexIdx]?.trim() === req.params.index) {
-      // Cập nhật các trường
-      if (newProductId) cols[productIdIdx] = newProductId;
-      if (newName) cols[nameIdx] = newName;
-      if (req.body.origin) cols[originIdx] = req.body.origin;
-      if (newImage) cols[imageIdx] = newImage;
-      
-      // Giữ nguyên các trường khác
-      return cols.join(',');
-    }
-    return line;
-  });
-
-  // Ghi file với đúng số cột và format
-  fs.writeFileSync(addSPPath, updatedLines.join('\n'), 'utf8');
-}}}
-
-    res.json({ success: true, message: 'Cập nhật thành công' });
-  } catch (error) {
-    console.error('Error updating diary:', error);
-    res.status(500).json({ success: false, error: error.message });
+    // Cập nhật trạng thái trong CropDiary
+    await CropDiary.findOneAndUpdate({ index: traceData.index }, { tracingStatus: 'Đã thêm vào truy xuất' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
-/////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////
 
-// API sửa thông tin sản phẩm đã thêm vào truy xuất
-app.put('/api/products/:index', (req, res) => {
-  const index = req.params.index;
-  const updated = req.body;
-  const filePath = path.join(__dirname, 'csv', 'addSP.csv');
-  const results = [];
-  let headers = [];
-  fs.createReadStream(filePath)
-    .pipe(csv.parse({ headers: true }))
-    .on('headers', h => { headers = h; })
-    .on('data', row => {
-      if (row.index === index) {
-        results.push({ ...row, ...updated });
-      } else {
-        results.push(row);
-      }
-    })
-    .on('end', () => {
-      const ws = fs.createWriteStream(filePath);
-      csv.write(results, { headers: true }).pipe(ws)
-        .on('finish', () => res.json({ success: true }))
-        .on('error', err => res.status(500).json({ success: false, error: err.message }));
-    });
-});
-/////////////////////////////////////////////////////////////////////////////////////////
-
-// API cập nhật trạng thái truy xuất của nhật ký đã hoàn thành
-app.put('/api/complete-diaries/:index', (req, res) => {
-
-  if (req.body.stage === 'Hoàn thành') {
-    const completePath = path.join(__dirname, 'csv', 'addCompleteNK.csv');
-    const index = req.params.index;
-    let found = false;
-    let results = [];
-    const header = 'batchCode,productId,name,origin,season,plantDate,area,stage,tracingStatus,note,index';
-
-    try {
-      // Đọc file hiện tại
-      if (fs.existsSync(completePath)) {
-        const lines = fs.readFileSync(completePath, 'utf8').split('\n').filter(Boolean);
-        results = lines.length === 0 ? [header] : lines;
-        
-        // Cập nhật nếu tìm thấy
-        results = results.map((line, idx) => {
-          if (idx === 0) return line;
-          const cols = line.split(',');
-          if (cols[10] === index) {
-            found = true;
-            cols[7] = 'Hoàn thành';
-            cols[8] = 'Đã truy xuất';
-            cols[9] = req.body.note || cols[9];
-          }
-          return cols.join(',');
-        });
-      } else {
-        results = [header];
-      }
-
-      // Nếu chưa có thì lấy từ addNK.csv
-      if (!found) {
-        const nkPath = path.join(__dirname, 'csv', 'addNK.csv');
-        if (fs.existsSync(nkPath)) {
-          const nkLines = fs.readFileSync(nkPath, 'utf8').split('\n').filter(Boolean);
-          
-          for (let i = 1; i < nkLines.length; i++) {
-            const cols = nkLines[i].split(',');
-            if (cols[10] === index) {
-              const newRow = [
-                cols[0], // batchCode
-                cols[1], // productId
-                cols[2], // name
-                cols[3], // origin
-                cols[4], // season
-                cols[5], // plantDate
-                cols[6], // area
-                'Hoàn thành',
-                'Chưa truy xuất', // tracingStatus
-                req.body.note || cols[9] || '',
-                cols[10] // index
-              ].join(',');
-              results.push(newRow);
-              found = true;
-              break;
-            }
-          }
-        }
-      }
-
-      // Ghi file
-      fs.writeFileSync(completePath, results.join('\n'), 'utf8');
-
-      // Trả về kết quả chi tiết
-      res.json({ 
-        success: true,
-        message: found ? 'Cập nhật thành công' : 'Thêm mới thành công',
-        data: {
-          found,
-          totalLines: results.length,
-          path: completePath,
-        }
-      });
-
-    } catch (error) {
-      console.error('Error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message,
-        details: {
-          batchCode,
-          stage: req.body.stage,
-          path: completePath
-        }
-      });
-    }
-  } else {
-    res.json({
-      success: false,
-      message: 'Stage không phải Hoàn thành',
-      stage: req.body.stage
-    });
-  }
-});
-/////////////////////////////////////////////////////////////////////////////////////////
-
-// XÓA loại sản phẩm theo productId
-app.delete('/api/product-types/:productId', (req, res) => {
-  const productId = req.params.productId;
-  const filePath = path.join(__dirname, 'csv', 'productTypes.csv');
-  const results = [];
-  let headers = [];
-  fs.createReadStream(filePath)
-    .pipe(csv.parse({ headers: true }))
-    .on('headers', h => { headers = h; })
-    .on('data', row => {
-      if (row.productId !== productId) results.push(row);
-    })
-    .on('end', () => {
-      const ws = fs.createWriteStream(filePath);
-      csv.write(results, { headers: true }).pipe(ws)
-        .on('finish', () => res.json({ success: true }))
-        .on('error', err => res.status(500).json({ success: false, error: err.message }));
-    });
-});
-/////////////////////////////////////////////////////////////////////////////////////////
-
-// XÓA sản phẩm đã thêm vào truy xuất theo index
-app.delete('/api/products/:index', (req, res) => {
-  const index = req.params.index;
-  const filePath = path.join(__dirname, 'csv', 'addSP.csv');
-  const results = [];
-  let headers = [];
-  fs.createReadStream(filePath)
-    .pipe(csv.parse({ headers: true }))
-    .on('headers', h => { headers = h; })
-    .on('data', row => {
-      if (row.index !== index) results.push(row);
-    })
-    .on('end', () => {
-      const ws = fs.createWriteStream(filePath);
-      csv.write(results, { headers: true }).pipe(ws)
-        .on('finish', () => res.json({ success: true }))
-        .on('error', err => res.status(500).json({ success: false, error: err.message }));
-    });
-});
-/////////////////////////////////////////////////////////////////////////////////////////
-
-// API xóa sản phẩm để đánh dấu trong nhật ký hoàn thành
-app.delete('/api/products/batch/:index', (req, res) => {
-  const index = req.params.index;
-  const filePath = path.join(__dirname, 'csv', 'addSP.csv');
-  const completeNKPath = path.join(__dirname, 'csv', 'addCompleteNK.csv');
-  const results = [];
-  let headers = [];
-
-  // 1. Xóa từ addSP.csv
-  fs.createReadStream(filePath)
-    .pipe(csv.parse({ headers: true }))
-    .on('headers', h => { headers = h; })
-    .on('data', row => {
-      if (row.index !== index) {
-        results.push(row);
-      }
-    })
-    .on('end', () => {
-      const ws = fs.createWriteStream(filePath);
-      csv.write(results, { headers: true })
-        .pipe(ws)
-        .on('finish', async () => {
-          try {
-            // 2. Cập nhật trạng thái trong addCompleteNK.csv
-            if (fs.existsSync(completeNKPath)) {
-              const lines = fs.readFileSync(completeNKPath, 'utf8').split('\n').filter(Boolean);
-              const newLines = lines.map((line, idx) => {
-                if (idx === 0) return line;
-                const cols = line.split(',');
-                if (cols[11] === index) {  
-                  cols[9] = '(Đã xóa khỏi truy xuất nguồn gốc)';
-                  return cols.join(',');
-                }
-                return line;
-              });
-
-              // Ghi file với \n ở cuối
-              fs.writeFileSync(completeNKPath, newLines.join('\n') + '\n', 'utf8');
-            }
-
-            res.json({ 
-              success: true,
-              message: 'Đã xóa sản phẩm và cập nhật trạng thái thành công'
-            });
-          } catch (error) {
-            res.status(500).json({ 
-              success: false, 
-              error: error.message 
-            });
-          }
-        });
-    });
-});
-/////////////////////////////////////////////////////////////////////////////////////////
-
-// API xóa nhật ký trồng trọt theo index
-const parse = require('csv-parse/sync').parse;
-
-app.delete('/api/crop-diaries/:index', (req, res) => {
+// API xuất mã QR cho sản phẩm truy xuất nguồn gốc
+app.post('/api/trace/export-qr', async (req, res) => {
   try {
-    // Kiểm tra index có hợp lệ không
-    const index = req.params.index;
-    if (!index) {
-      return res.status(400).json({
-        success: false,
-        message: 'Thiếu index của nhật ký cần xóa'
-      });
+    const { index } = req.body;
+    const trace = await Trace.findOne({ index });
+    if (!trace) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm truy xuất' });
+    // Nếu chưa có mã QR thì sinh mới
+    if (!trace.qrImage) {
+      const qrContent = `SP:${trace.productId};LO:${trace.batchCode};NAME:${trace.name};DATE:${trace.productionDate}`;
+      trace.qrImage = await QRCode.toDataURL(qrContent);
+      await trace.save();
     }
-
-    // Loại bỏ bất kỳ ký tự đường dẫn không hợp lệ
-    const sanitizedIndex = index.replace(/[\/\\]/g, '');
-    
-    const filePath = path.join(__dirname, 'csv', 'addNK.csv');
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy file nhật ký'
-      });
-    }
-
-    // Đọc và xử lý file CSV
-    const content = fs.readFileSync(filePath, 'utf8');
-    const lines = content.split('\n').filter(Boolean);
-    const header = lines[0];
-    
-    let deletedDiary = null;
-    let newLines = lines.map((line, idx) => {
-      if (idx === 0) return line;
-      
-      const cols = [];
-      let current = '';
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') inQuotes = !inQuotes;
-        if (char === ',' && !inQuotes) {
-          cols.push(current);
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      cols.push(current);
-
-      // Tìm nhật ký cần xóa theo index
-      if (cols[10] === sanitizedIndex) {
-        deletedDiary = {
-          batchCode: cols[0],
-          area: parseFloat(cols[6]) || 0
-        };
-        return null;
-      }
-      return line;
-    }).filter(Boolean);
-
-    if (!deletedDiary) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy nhật ký cần xóa'
-      });
-    }
-
-    // Ghi lại file
-    fs.writeFileSync(filePath, newLines.join('\n') + '\n', 'utf8');
-
-    // Cập nhật diện tích trống
-    const plotPath = path.join(__dirname, 'csv', 'addPlot.csv');
-    if (fs.existsSync(plotPath)) {
-      const plotLines = fs.readFileSync(plotPath, 'utf8').split('\n');
-      const updatedPlotLines = plotLines.map((line, idx) => {
-        if (idx === 0) return line;
-        const cols = line.split(',');
-        if (cols[0] === deletedDiary.batchCode) {
-          const currentAreaFree = parseFloat(cols[2]) || 0;
-          cols[2] = (currentAreaFree + deletedDiary.area).toString();
-          return cols.join(',');
-        }
-        return line;
-      });
-      fs.writeFileSync(plotPath, updatedPlotLines.join('\n') + '\n', 'utf8');
-    }
-
-    res.json({
-      success: true,
-      message: 'Đã xóa nhật ký thành công',
-      deletedDiary
-    });
-
-  } catch (error) {
-    console.error('Error deleting diary:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.json({ success: true, qrImage: trace.qrImage, index: trace.index });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
-/////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////
 
-// API lấy danh sách lô đất
-app.get('/api/plots', (req, res) => {
-  const filePath = path.join(__dirname, 'csv', 'addPlot.csv');
-  if (!fs.existsSync(filePath)) return res.json([]);
-  const results = [];
-  fs.createReadStream(filePath)
-    .pipe(csv.parse({ headers: true }))
-    .on('data', row => results.push(row))
-    .on('end', () => res.json(results))
-    .on('error', () => res.json([]));
-});
-
-// Đọc sản phẩm từ CSV
-app.get('/api/products', (req, res) => {
-  const results = [];
-  fs.createReadStream(path.join(__dirname, 'csv', 'addSP.csv'))
-    .pipe(csv.parse({ headers: true }))
-    .on('error', error => res.status(500).json({ error: error.message }))
-    .on('data', row => results.push(row))
-    .on('end', () => res.json(results));
-});
-
-// Đọc nhật ký trồng trọt từ CSV
-app.get('/api/crop-diaries', (req, res) => {
+// API xuất mã QR cho sản phẩm (lưu vào ExportedQR)
+app.post('/api/export-qr', async (req, res) => {
   try {
-    const filePath = path.join(__dirname, 'csv', 'addNK.csv');
-    if (!fs.existsSync(filePath)) {
-      return res.json([]);
-    }
-
-    const results = [];
-    fs.createReadStream(filePath)
-      .pipe(csv.parse({ headers: true }))
-      .on('error', error => {
-        console.error('Error reading CSV:', error);
-        res.status(500).json({ error: error.message });
-      })
-      .on('data', row => {
-        // Parse updates if exists
-        if (row.updates) {
-          try {
-            // Clean up the JSON string
-            const jsonStr = row.updates
-              .replace(/^"|"$/g, '')
-              .replace(/""/g, '"')
-              .trim();
-            row.updates = JSON.parse(jsonStr);
-          } catch (e) {
-            console.error('Error parsing updates:', e);
-            row.updates = [];
-          }
-        } else {
-          row.updates = [];
-        }
-        results.push(row);
-      })
-      .on('end', () => {
-        res.json(results);
-      });
-  } catch (error) {
-    console.error('Error in GET /api/crop-diaries:', error);
-    res.status(500).json({ error: error.message });
+    const { index, weight, phone, expiryDate } = req.body;
+    // Lấy qrImage từ Trace
+    const trace = await Trace.findOne({ index });
+    if (!trace) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm truy xuất' });
+    // Lưu vào ExportedQR
+    await ExportedQR.findOneAndUpdate(
+      { index },
+      {
+        index,
+        qrImage: trace.qrImage,
+        weight: weight || '',
+        phone: phone || '',
+        expiryDate: expiryDate || ''
+      },
+      { upsert: true, new: true }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
+////////////////////////////////////////////////////////////////////////////////////////
 
 // API lấy danh sách loại sản phẩm
-app.get('/api/product-types', (req, res) => {
-  const results = [];
-  fs.createReadStream(PRODUCT_TYPE_CSV)
-    .pipe(csv.parse({ headers: true }))
-    .on('data', row => {
-      results.push(row);
-    })
-    .on('end', () => {
-      res.json(results);
-    })
-    .on('error', () => res.json([]));
+app.get('/api/product-types', async (req, res) => {
+  try {
+    const results = await ProductType.find();
+    res.json(results);
+  } catch (err) {
+    res.json([]);
+  }
 });
 
+// API lấy danh sách lô đất
+app.get('/api/plots', async (req, res) => {
+  try {
+    const results = await Plot.find();
+    res.json(results);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
+// API lấy danh sách nhật ký trồng trọt
+app.get('/api/crop-diaries', async (req, res) => {
+  try {
+    const results = await CropDiary.find();
+    res.json(results);
+  } catch (err) {
+    res.json([]);
+  }
+});
 
 // API lấy danh sách nhật ký hoàn thành
-app.get('/api/complete-diaries', (req, res) => {
-  const filePath = path.join(__dirname, 'csv', 'addCompleteNK.csv');
-  if (!fs.existsSync(filePath)) return res.json([]);
-  
-  const results = [];
-  fs.createReadStream(filePath)
-    .pipe(csv.parse({ headers: true }))
-    .on('data', row => {
-      row.isDeleted = row.note?.includes('(Đã xóa khỏi truy xuất nguồn gốc)');
-      results.push(row);
-    })
-    .on('end', () => res.json(results))
-    .on('error', err => res.status(500).json({ error: err.message }));
+app.get('/api/complete-diaries', async (req, res) => {
+  try {
+    // Giả sử nhật ký hoàn thành có stage là 'Hoàn thành'
+    const results = await CropDiary.find({ stage: 'Hoàn thành' });
+    res.json(results);
+  } catch (err) {
+    res.json([]);
+  }
 });
 
-app.get('/api/crop-logs', (req, res) => {
-  res.json([]);
+// API lấy danh sách sản phẩm
+app.get('/api/products', async (req, res) => {
+  try {
+    const results = await Product.find();
+    res.json(results);
+  } catch (err) {
+    res.json([]);
+  }
 });
 
-// API lấy danh sách QR đã xuất
-app.get('/api/exported-qr', (req, res) => {
-  const filePath = path.join(__dirname, 'csv', 'addQR.csv');
-  if (!fs.existsSync(filePath)) return res.json([]);
-  const results = [];
-  fs.createReadStream(filePath)
-    .pipe(csv.parse({ headers: true }))
-    .on('data', row => results.push(row))
-    .on('end', () => res.json(results))
-    .on('error', () => res.json([]));
+// API lấy danh sách lô đất kèm cây trồng
+app.get('/api/plots-with-crops', async (req, res) => {
+  try {
+    const plots = await Plot.find();
+    const crops = await CropDiary.find();
+    const plotsWithCrops = plots.map(plot => ({
+      ...plot.toObject(),
+      crops: crops.filter(crop => crop.batchCode === plot.batchCode)
+    }));
+    res.json(plotsWithCrops);
+  } catch (err) {
+    res.json([]);
+  }
 });
 
-app.get('/api/product-info', (req, res) => {
+// API lấy danh sách truy xuất nguồn gốc
+app.get('/api/trace', async (req, res) => {
+  try {
+    const results = await Trace.find();
+    res.json(results);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
+// API lấy danh sách QR đã xuất (chỉ trả về các ExportedQR)
+app.get('/api/exported-qr', async (req, res) => {
+  try {
+    const results = await ExportedQR.find();
+    res.json(results);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
+// API lấy thông tin sản phẩm theo index cho QR
+app.get('/api/product-info', async (req, res) => {
   const { index } = req.query;
-  const filePath = path.join(__dirname, 'csv', 'addSP.csv');
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
-  const results = [];
-  fs.createReadStream(filePath)
-    .pipe(csv.parse({ headers: true }))
-    .on('data', row => {
-      if (
-        (index && row.index === index)
-      ) {
-        results.push(row);
+  try {
+    const trace = await Trace.findOne({ index });
+    if (!trace) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+    res.json(trace);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// API thêm công đoạn sản xuất (có thể upload ảnh)
+app.post('/api/prod-process', upload.array('imageProd', 10), async (req, res) => {
+  try {
+    const { index, stage, content, date } = req.body;
+    let imageProd = '';
+    if (req.files && req.files.length > 0) {
+      imageProd = req.files.map(f => `/uploads/${f.filename}`).join(',');
+    } else if (req.body.imageProd) {
+      imageProd = req.body.imageProd;
+    }
+    await ProductionProcess.create({ index, stage, content, date, imageProd });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// API lấy danh sách công đoạn sản xuất (gộp theo index, trả về mảng object: {index, stages, name, productId})
+app.get('/api/prod-process', async (req, res) => {
+  try {
+    const results = await ProductionProcess.find();
+    const cropDiaries = await CropDiary.find();
+    // Gộp các công đoạn theo index
+    const grouped = {};
+    results.forEach(item => {
+      if (!item.index) return;
+      if (!grouped[item.index]) grouped[item.index] = { index: item.index, stages: [], name: '', productId: '' };
+      // Format date nếu là ISO
+      let formattedDate = item.date;
+      if (formattedDate && formattedDate.includes('T')) {
+        const d = new Date(formattedDate);
+        formattedDate = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
       }
-    })
-    .on('end', () => {
-      if (results.length > 0) res.json(results[0]);
-      else res.status(404).json({ error: 'Not found' });
+      grouped[item.index].stages.push({
+        stage: item.stage,
+        content: item.content,
+        date: formattedDate,
+        imageProd: item.imageProd
+      });
     });
+    // Gán thêm tên sản phẩm và mã sản phẩm từ CropDiary
+    Object.values(grouped).forEach(group => {
+      const diary = cropDiaries.find(d => d.index === group.index);
+      if (diary) {
+        group.name = diary.name || '';
+        group.productId = diary.productId || '';
+      }
+    });
+    res.json(Object.values(grouped));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-const processUpload = multer({ dest: path.join(__dirname, 'public', 'uploads') });
-
-app.post('/api/prod-process', processUpload.array('imageProd', 10), (req, res) => {
-  const { stage, date, content, index } = req.body;
-  let imageProd = '';
-  if (req.files && req.files.length > 0) {
-    // Lưu nhiều đường dẫn, phân cách bằng dấu phẩy
-    imageProd = req.files.map(f => `/uploads/${f.filename}`).join(',');
-  }
-  const filePath = path.join(__dirname, 'csv', 'prodProcess.csv');
-  let needHeader = false;
-  if (!fs.existsSync(filePath) || fs.readFileSync(filePath, 'utf8').trim() === '') {
-    needHeader = true;
-  }
-  const row = [
-    `"${(stage || '').replace(/"/g, '""')}"`,
-    `"${(date || '').replace(/"/g, '""')}"`,
-    `"${(content || '').replace(/"/g, '""')}"`,
-    `"${imageProd}"`,
-    `"${(index || '').replace(/"/g, '""')}"`
-  ].join(',') + '\n';
-  if (needHeader) {
-    fs.writeFileSync(filePath, 'stage,date,content,imageProd,index\n' + row, 'utf8');
-  } else {
-    fs.appendFileSync(filePath, row, 'utf8');
-  }
-  res.json({ success: true, message: 'Đã lưu quá trình sản xuất', imageProd });
-});
-
-app.get('/api/prod-process', (req, res) => {
-  const filePath = path.join(__dirname, 'csv', 'prodProcess.csv');
-  const results = [];
-  if (!fs.existsSync(filePath)) return res.json([]);
-  fs.createReadStream(filePath)
-    .pipe(csv.parse({ headers: true }))
-    .on('data', row => results.push(row))
-    .on('end', () => res.json(results));
-});
-
-// Đăng nhập: kiểm tra users.csv trước, nếu không có thì check admin mặc định
+// Đăng nhập: kiểm tra user trong MongoDB trước, nếu không có thì check admin mặc định
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
-  // 1. Kiểm tra trong users.csv
-  if (fs.existsSync(USERS_CSV)) {
-    const lines = fs.readFileSync(USERS_CSV, 'utf8').split('\n').filter(Boolean);
-    const header = lines[0].split(',');
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',');
-      if (cols[0] === username) {
-        const hash = cols[1];
-        const role = cols[2];
-        // So sánh password
-        const ok = await require('bcryptjs').compare(password, hash);
-        if (ok) {
-          return res.json({
-            success: true,
-            user: {
-              username,
-              role,
-              token: 'dummy-token'
-            }
-          });
-        } else {
-          return res.json({ success: false, message: 'Sai tài khoản hoặc mật khẩu' });
+  // 1. Kiểm tra trong MongoDB
+  const user = await User.findOne({ username });
+  if (user) {
+    const ok = await bcrypt.compare(password, user.password);
+    if (ok) {
+      return res.json({
+        success: true,
+        user: {
+          username: user.username,
+          role: user.role,
+          token: 'dummy-token'
         }
-      }
+      });
+    } else {
+      return res.json({ success: false, message: 'Sai tài khoản hoặc mật khẩu' });
     }
   }
   // 2. Nếu không có user, check admin mặc định
@@ -1387,15 +486,13 @@ app.post('/api/login', async (req, res) => {
 });
 
 // Lấy danh sách user (chỉ cho admin)
-app.get('/api/users', (req, res) => {
-  // Đơn giản: không xác thực token, chỉ demo
-  if (!fs.existsSync(USERS_CSV)) return res.json({ success: true, users: [] });
-  const results = [];
-  fs.createReadStream(USERS_CSV)
-    .pipe(csv.parse({ headers: true }))
-    .on('data', row => results.push(row))
-    .on('end', () => res.json({ success: true, users: results }))
-    .on('error', () => res.json({ success: true, users: [] }));
+app.get('/api/users', async (req, res) => {
+  try {
+    const users = await User.find({}, '-password'); // Ẩn password
+    res.json({ success: true, users });
+  } catch (err) {
+    res.json({ success: true, users: [] });
+  }
 });
 
 // Thêm user mới (chỉ cho admin và manager)
@@ -1408,24 +505,13 @@ app.post('/api/users', checkWritePermission, async (req, res) => {
     return res.json({ success: false, message: 'Quyền không hợp lệ' });
   }
   // Kiểm tra trùng username
-  let users = [];
-  if (fs.existsSync(USERS_CSV)) {
-    users = fs.readFileSync(USERS_CSV, 'utf8').split('\n').filter(Boolean);
-    // Bỏ header
-    users = users.slice(1).map(line => line.split(',')[0]);
-    if (users.includes(username)) {
-      return res.json({ success: false, message: 'Tên đăng nhập đã tồn tại' });
-    }
+  const isExist = await User.findOne({ username });
+  if (isExist) {
+    return res.json({ success: false, message: 'Tên đăng nhập đã tồn tại' });
   }
   // Hash password
   const hash = await bcrypt.hash(password, 8);
-  const needHeader = !fs.existsSync(USERS_CSV) || fs.readFileSync(USERS_CSV, 'utf8').trim() === '';
-  const row = `${username},${hash},${role},${new Date().toISOString()}\n`;
-  if (needHeader) {
-    fs.writeFileSync(USERS_CSV, 'username,password,role,created_at\n' + row, 'utf8');
-  } else {
-    fs.appendFileSync(USERS_CSV, row, 'utf8');
-  }
+  await User.create({ username, password: hash, role, created_at: new Date().toISOString() });
   res.json({ success: true, user: { username, role } });
 });
 
@@ -1437,3 +523,168 @@ function checkWritePermission(req, res, next) {
   }
   next();
 }
+
+// --- PRODUCT TYPES ---
+app.put('/api/product-types/:id', upload.single('image'), async (req, res) => {
+  const { name, type, expiryDate } = req.body;
+  const imagePath = req.file ? `/uploads/${req.file.filename}` : undefined;
+  try {
+    const update = { name, type, expiryDate };
+    if (imagePath) update.image = imagePath;
+    const result = await ProductType.findOneAndUpdate({ productId: req.params.id }, update, { new: true });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy loại sản phẩm' });
+    res.json({ success: true, productType: result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+app.delete('/api/product-types/:id', async (req, res) => {
+  try {
+    const result = await ProductType.findOneAndDelete({ productId: req.params.id });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy loại sản phẩm' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// --- PLOTS ---
+app.put('/api/plots/:batchCode', async (req, res) => {
+  const { area, areaFree } = req.body;
+  try {
+    const result = await Plot.findOneAndUpdate({ batchCode: req.params.batchCode }, { area, areaFree }, { new: true });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy lô đất' });
+    res.json({ success: true, plot: result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+app.delete('/api/plots/:batchCode', async (req, res) => {
+  try {
+    const result = await Plot.findOneAndDelete({ batchCode: req.params.batchCode });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy lô đất' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// --- CROP DIARIES ---
+// API cập nhật giai đoạn nhật ký (cập nhật stage, content, date, imageProd vào ProductionProcess)
+app.put('/api/crop-diaries/:index', upload.array('imageProd', 10), async (req, res) => {
+  try {
+    const update = req.body;
+    let imageProd = '';
+    if (req.files && req.files.length > 0) {
+      imageProd = req.files.map(f => `/uploads/${f.filename}`).join(',');
+    } else if (req.body.imageProd) {
+      imageProd = req.body.imageProd;
+    }
+    // Chỉ cập nhật CropDiary
+    const result = await CropDiary.findOneAndUpdate({ index: req.params.index }, update, { new: true });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy nhật ký' });
+    // Lưu vào ProductionProcess chỉ khi thực sự có thay đổi và có nội dung (stage hoặc content hoặc imageProd)
+    if ((update.stage || update.content || imageProd) && (update.content || imageProd)) {
+      const lastProcess = await ProductionProcess.findOne({ index: req.params.index }).sort({ _id: -1 });
+      if (!lastProcess || lastProcess.stage !== update.stage || lastProcess.content !== update.content || lastProcess.imageProd !== imageProd) {
+        await ProductionProcess.create({
+          index: req.params.index,
+          stage: update.stage || '',
+          content: update.content || '',
+          date: update.date || new Date().toISOString(),
+          imageProd: imageProd || ''
+        });
+      }
+    }
+    res.json({ success: true, cropDiary: result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+app.delete('/api/crop-diaries/:index', async (req, res) => {
+  try {
+    const result = await CropDiary.findOneAndDelete({ index: req.params.index });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy nhật ký' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// --- PRODUCTS ---
+app.put('/api/products/:index', async (req, res) => {
+  try {
+    const update = req.body;
+    const result = await Product.findOneAndUpdate({ index: req.params.index }, update, { new: true });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+    res.json({ success: true, product: result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+app.delete('/api/products/:index', async (req, res) => {
+  try {
+    const result = await Product.findOneAndDelete({ index: req.params.index });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// --- USERS ---
+app.put('/api/users/:username', checkWritePermission, async (req, res) => {
+  const { password, role } = req.body;
+  try {
+    const update = {};
+    if (password) update.password = await bcrypt.hash(password, 8);
+    if (role) update.role = role;
+    const result = await User.findOneAndUpdate({ username: req.params.username }, update, { new: true });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy user' });
+    res.json({ success: true, user: { username: result.username, role: result.role } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+app.delete('/api/users/:username', checkWritePermission, async (req, res) => {
+  try {
+    const result = await User.findOneAndDelete({ username: req.params.username });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy user' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// --- COMPLETE DIARIES ---
+app.put('/api/complete-diaries/:index', async (req, res) => {
+  try {
+    const update = req.body;
+    const result = await CropDiary.findOneAndUpdate({ index: req.params.index }, update, { new: true });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy nhật ký' });
+    res.json({ success: true, cropDiary: result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// --- TRACE ---
+app.delete('/api/trace/:index', async (req, res) => {
+  try {
+    const result = await Trace.findOneAndDelete({ index: req.params.index });
+    if (!result) return res.status(404).json({ success: false, message: 'Không tìm thấy truy xuất' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Thêm/sửa loại sản phẩm nhận thêm trường type
+app.post('/api/product-types', upload.none(), (req, res) => {
+  const { productId, name, type, expiryDate, image } = req.body;
+  const newType = { productId, name, type, expiryDate, image };
+});
+
+app.put('/api/product-types/:id', upload.none(), (req, res) => {
+  const { name, type, expiryDate, image } = req.body;
+});
