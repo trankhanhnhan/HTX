@@ -63,5 +63,3 @@ Hệ thống quản lý và truy xuất nguồn gốc sản phẩm được xây
 - Thêm mới, chỉnh sửa, xóa tài khoản người dùng.
 - Phân quyền: admin, manager, user.
 - Đăng nhập bảo mật, quản lý tài khoản.
-
-**Chúc quý khách sử dụng phần mềm hiệu quả và thuận tiện!**
